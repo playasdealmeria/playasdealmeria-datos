@@ -126,6 +126,86 @@ async function mapLimit(arr,limit,fn){
   await Promise.all(workers);
 }
 
+
+function validNum(x){return x!=null && !Number.isNaN(Number(x));}
+function roundAvg(vals){const v=(vals||[]).filter(validNum).map(Number);return v.length?Math.round(v.reduce((a,b)=>a+b,0)/v.length):null;}
+function roundMax(vals){const v=(vals||[]).filter(validNum).map(Number);return v.length?Math.round(Math.max(...v)):null;}
+function roundMin(vals){const v=(vals||[]).filter(validNum).map(Number);return v.length?Math.round(Math.min(...v)):null;}
+function common(vals,fallback=null){const v=(vals||[]).filter(x=>x!=null);if(!v.length)return fallback;const m=new Map();v.forEach(x=>m.set(String(x),(m.get(String(x))||0)+1));return [...m.entries()].sort((a,b)=>b[1]-a[1])[0][0];}
+function aggregatePart(parts){
+  const src=(parts||[]).filter(Boolean);
+  if(!src.length)return null;
+  const ico=common(src.map(x=>x.ico),'⛅');
+  const estadoTxt=common(src.map(x=>x.estadoTxt),'variable');
+  const windK=roundAvg(src.map(x=>x.windK));
+  const windDir=roundAvg(src.map(x=>x.windDir));
+  return {
+    ico,
+    estadoTxt,
+    temp:roundAvg(src.map(x=>x.temp)),
+    windK,
+    gustK:roundMax(src.map(x=>x.gustK)),
+    windDir,
+    waveH:avg(src.map(x=>x.waveH))!=null?Math.round(avg(src.map(x=>x.waveH))*10)/10:null,
+    waveDir:roundAvg(src.map(x=>x.waveDir))
+  };
+}
+function aggregateHourly(allHourly){
+  const out={time:[],temp:[],rh:[],pr:[],code:[],wind:[],gust:[],wdir:[],wave:[],waveDir:[]};
+  const by=new Map();
+  (allHourly||[]).forEach(H=>{
+    if(!H||!Array.isArray(H.time))return;
+    H.time.forEach((t,i)=>{
+      if(!by.has(t))by.set(t,{temp:[],rh:[],pr:[],code:[],wind:[],gust:[],wdir:[],wave:[],waveDir:[]});
+      const g=by.get(t);
+      ['temp','rh','pr','code','wind','gust','wdir','wave','waveDir'].forEach(k=>{if(H[k]&&H[k][i]!=null)g[k].push(H[k][i]);});
+    });
+  });
+  [...by.keys()].sort((a,b)=>a-b).forEach(t=>{
+    const g=by.get(t);out.time.push(t);
+    out.temp.push(roundAvg(g.temp));out.rh.push(roundAvg(g.rh));out.pr.push(avg(g.pr)!=null?Math.round(avg(g.pr)*10)/10:0);
+    out.code.push(Number(common(g.code,0)));out.wind.push(roundAvg(g.wind));out.gust.push(roundMax(g.gust));out.wdir.push(roundAvg(g.wdir));
+    out.wave.push(avg(g.wave)!=null?Math.round(avg(g.wave)*10)/10:null);out.waveDir.push(roundAvg(g.waveDir));
+  });
+  return out;
+}
+function aggregateProvinceFromBeaches(beaches){
+  const values=Object.values(beaches||{}).filter(x=>x&&Array.isArray(x.days));
+  if(!values.length)return null;
+  const maxDays=Math.max(...values.map(x=>x.days.length));
+  const days=[];
+  for(let i=0;i<maxDays;i++){
+    const list=values.map(x=>x.days[i]).filter(Boolean);
+    if(!list.length)continue;
+    const first=list[0];
+    const fuerza=roundAvg(list.map(x=>x.fuerza));
+    const viento=common(list.map(x=>x.viento),'flojo');
+    days.push({
+      key:i===0?'hoy':'d'+i,
+      label:i===0?'Hoy':(first.label||dayLabel(new Date(Date.now()+i*864e5).toISOString().slice(0,10),i)),
+      ico:common(list.map(x=>x.ico),'⛅'),
+      temp:roundMax(list.map(x=>x.temp)),
+      min:roundMin(list.map(x=>x.min)),
+      agua:roundAvg(list.map(x=>x.agua)),
+      waveH:avg(list.map(x=>x.waveH))!=null?Math.round(avg(list.map(x=>x.waveH))*10)/10:null,
+      waveDir:roundAvg(list.map(x=>x.waveDir)),
+      estado:common(list.map(x=>x.estado),'variable'),
+      estadoTxt:common(list.map(x=>x.estadoTxt),'variable'),
+      viento,
+      fuerza,
+      rachas:roundMax(list.map(x=>x.rachas)),
+      sale:common(list.map(x=>x.sale),first.sale||'06:50'),
+      pone:common(list.map(x=>x.pone),first.pone||'21:30'),
+      uv:roundMax(list.map(x=>x.uv)),
+      parts:{
+        morning:aggregatePart(list.map(x=>x.parts&&x.parts.morning)),
+        afternoon:aggregatePart(list.map(x=>x.parts&&x.parts.afternoon))
+      }
+    });
+  }
+  return {days,hourly:aggregateHourly(values.map(x=>x.hourly))};
+}
+
 async function main(){
   const catalog=JSON.parse(await readFile(new URL('./playas_catalogo.json',import.meta.url),'utf8'));
   if(!Array.isArray(catalog)||!catalog.length)throw new Error('playas_catalogo.json vacío');
@@ -141,8 +221,9 @@ async function main(){
   process.stdout.write('\n');
 
   console.log('Generando resumen provincial…');
-  let province=null;
-  try{province=await scenariosAt(PROVINCE.lat,PROVINCE.lng);}catch(e){console.error('  ! sin provincia:',e.message);}
+  // Resumen de portada: agregación real de las playas de la costa.
+  // La máxima/minima de "Hoy en la costa de Almería" sale de las playas, no de un punto fijo.
+  const province=aggregateProvinceFromBeaches(beaches);
 
   const out={
     generated_at:new Date().toISOString(),
@@ -154,7 +235,7 @@ async function main(){
   await writeFile(new URL('./datos_playas.json',import.meta.url),JSON.stringify(out));
   const okBeaches=Object.keys(beaches).length;
   const okAir=Object.values(air).filter(a=>!a.error).length;
-  console.log(`OK · ${okBeaches} playas con clima/mar · ${okAir} con calidad del aire · provincia ${province?'sí':'no'}`);
+  console.log(`OK · ${okBeaches} playas con clima/mar · ${okAir} con calidad del aire · resumen costa ${province?'sí':'no'}`);
 }
 
 main().catch(e=>{console.error('ERROR:',e);process.exit(1)});
