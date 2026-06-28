@@ -73,7 +73,7 @@ async function scenariosAt(lat,lng){
       key:i===0?'hoy':'d'+i,
       label:i===0?'Hoy':dayLabel(dateStr,i),
       ico:e.ico,
-      temp:Math.round(i===0?(cur.temperature_2m??d.temperature_2m_max?.[0]??0):(d.temperature_2m_max?.[i]??0)),
+      temp:Math.round(d.temperature_2m_max?.[i] ?? (i===0 ? cur.temperature_2m : 0) ?? 0),
       min:Math.round(d.temperature_2m_min?.[i]??0),
       agua:sst,
       waveH:wh(i),
