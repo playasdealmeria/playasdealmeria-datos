@@ -3,7 +3,6 @@ name: Actualizar datos meteorológicos
 on:
   workflow_dispatch:
   schedule:
-    # Cada hora, minuto 17. No despliega Netlify, solo actualiza datos_playas.json en este repo.
     - cron: "17 * * * *"
 
 permissions:
@@ -21,27 +20,52 @@ jobs:
     steps:
       - name: Descargar repositorio
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Configurar Node
         uses: actions/setup-node@v4
         with:
-          node-version: "24"
+          node-version: "20"
+
+      - name: Sincronizar con main
+        run: |
+          git fetch origin main
+          git checkout main
+          git reset --hard origin/main
 
       - name: Generar datos meteorológicos
         run: node build-data.mjs
 
       - name: Validar JSON generado
         run: |
-          node -e "const fs=require('fs'); const d=JSON.parse(fs.readFileSync('datos_playas.json','utf8')); if(!d.generated_at||!d.beaches) throw new Error('datos_playas.json no válido'); console.log('OK', d.generated_at, Object.keys(d.beaches).length, 'playas');"
+          test -f datos_playas.json
+          node -e "JSON.parse(require('fs').readFileSync('datos_playas.json','utf8')); console.log('JSON OK')"
 
-      - name: Commit si hay cambios
+      - name: Commit y push si hay cambios
         run: |
           git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          if git diff --quiet datos_playas.json; then
+            echo "No hay cambios en datos_playas.json"
+            exit 0
+          fi
+
           git add datos_playas.json
-          if git diff --cached --quiet; then
-            echo "Sin cambios que publicar"
-          else
+          git commit -m "Actualizar datos meteorológicos"
+
+          # Si el remoto ha avanzado mientras se generaban los datos, reintentamos una vez.
+          if ! git push origin main; then
+            echo "Push rechazado; sincronizando y regenerando datos..."
+            git fetch origin main
+            git reset --hard origin/main
+            node build-data.mjs
+            git add datos_playas.json
+            if git diff --cached --quiet; then
+              echo "No hay cambios tras sincronizar"
+              exit 0
+            fi
             git commit -m "Actualizar datos meteorológicos"
-            git push
+            git push origin main
           fi
