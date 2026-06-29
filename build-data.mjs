@@ -15,6 +15,24 @@ import { readFile, writeFile } from 'node:fs/promises';
 const FORECAST_DAYS = 7;
 const CONCURRENCY = 5;
 const PROVINCE = { lat: 36.84, lng: -2.46 };
+const AEMET_DAYS = [
+  {key:'hoy', day:0, label:'hoy'},
+  {key:'mna', day:1, label:'mañana'},
+  {key:'pmna', day:2, label:'pasado mañana'}
+];
+const AEMET_ZONE_CODES = {
+  '610403': {zone:'Poniente y Almería Capital', web_zones:['Poniente','Capital']},
+  '610404': {zone:'Levante almeriense', web_zones:['Cabo de Gata','Levante']}
+};
+// v90: las URL RSS directas /es/rss/avisos/... devuelven 404.
+// Usamos las páginas oficiales de avisos, que AEMET expone por comunidad/zona y día.
+// Importante: no añadir p=04 a la vista autonómica, porque puede devolver una página sin detalle.
+const AEMET_HTML_URLS = [
+  ...AEMET_DAYS.map(d => `https://www.aemet.es/es/eltiempo/prediccion/avisos?k=and&w=${d.key}`),
+  ...Object.keys(AEMET_ZONE_CODES).flatMap(code => AEMET_DAYS.map(d => `https://www.aemet.es/es/eltiempo/prediccion/avisos?l=${code}&w=${d.key}`))
+];
+const AEMET_ZONE_NAMES = ['Poniente y Almería Capital','Levante almeriense','Valle del Almanzora y Los Vélez','Nacimiento y Campo de Tabernas','Poniente y Almería Capital - Costa','Levante almeriense - Costa'];
+const AEMET_PHENOMENA = ['Fenómenos costeros','Temperaturas máximas','Temperaturas mínimas','Vientos','Lluvias','Tormentas','Nevadas','Nieblas','Polvo en suspensión','Rissagas','Aludes'];
 
 // ---- helpers portados 1:1 desde la app ----
 function avg(arr){const v=(arr||[]).filter(x=>x!=null&&!Number.isNaN(x));return v.length?v.reduce((a,b)=>a+b,0)/v.length:null;}
@@ -44,14 +62,14 @@ function summarizePart(dateStr,startHour,endHour,wh,mh){
 }
 
 async function getJSON(url){
-  const r=await fetch(url);
+  const r=await fetch(url,{headers:{'user-agent':'playasdealmeria.es datos/1.0'}});
   if(!r.ok)throw new Error('HTTP '+r.status+' '+url);
   return r.json();
 }
 
 // Equivalente servidor de fetchScenariosAt(lat,lng): devuelve {days, hourly}
 async function scenariosAt(lat,lng){
-  const u=`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m&hourly=temperature_2m,relative_humidity_2m,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m&daily=weather_code,temperature_2m_max,temperature_2m_min,wind_speed_10m_max,wind_direction_10m_dominant,uv_index_max,sunrise,sunset&timezone=auto&forecast_days=${FORECAST_DAYS}&wind_speed_unit=kmh`;
+  const u=`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m&hourly=temperature_2m,relative_humidity_2m,precipitation,precipitation_probability,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m&daily=weather_code,temperature_2m_max,temperature_2m_min,wind_speed_10m_max,wind_direction_10m_dominant,uv_index_max,sunrise,sunset&timezone=auto&forecast_days=${FORECAST_DAYS}&wind_speed_unit=kmh`;
   const wx=await getJSON(u);
   let sst=23,marD=null,marH=null;
   try{
@@ -94,7 +112,7 @@ async function scenariosAt(lat,lng){
   }
   const dateIndex={};(d.time||[]).forEach((date,i)=>{if(i<FORECAST_DAYS)dateIndex[date]=i;});
   const marineByTime={}; if(marH&&Array.isArray(marH.time))marH.time.forEach((t,i)=>{marineByTime[t]={waveH:marH.wave_height?.[i],waveDir:marH.wave_direction?.[i]};});
-  const hourly={time:[],temp:[],rh:[],pr:[],code:[],wind:[],gust:[],wdir:[],wave:[],waveDir:[]};
+  const hourly={time:[],temp:[],rh:[],pr:[],pop:[],code:[],wind:[],gust:[],wdir:[],wave:[],waveDir:[]};
   const hr=wx.hourly||{};
   (hr.time||[]).forEach((t,i)=>{
     const date=String(t).slice(0,10),hh=parseInt(String(t).slice(11,13),10),di=dateIndex[date];
@@ -103,6 +121,7 @@ async function scenariosAt(lat,lng){
     hourly.temp.push(Math.round(hr.temperature_2m?.[i]??0));
     hourly.rh.push(hr.relative_humidity_2m?.[i]!=null?Math.round(hr.relative_humidity_2m[i]):null);
     hourly.pr.push(hr.precipitation?.[i]!=null?Math.round(hr.precipitation[i]*10)/10:0);
+    hourly.pop.push(hr.precipitation_probability?.[i]!=null?Math.round(hr.precipitation_probability[i]):0);
     hourly.code.push(hr.weather_code?.[i]??0);
     hourly.wind.push(hr.wind_speed_10m?.[i]!=null?Math.round(hr.wind_speed_10m[i]):0);
     hourly.gust.push(hr.wind_gusts_10m?.[i]!=null?Math.round(hr.wind_gusts_10m[i]):null);
@@ -151,19 +170,19 @@ function aggregatePart(parts){
   };
 }
 function aggregateHourly(allHourly){
-  const out={time:[],temp:[],rh:[],pr:[],code:[],wind:[],gust:[],wdir:[],wave:[],waveDir:[]};
+  const out={time:[],temp:[],rh:[],pr:[],pop:[],code:[],wind:[],gust:[],wdir:[],wave:[],waveDir:[]};
   const by=new Map();
   (allHourly||[]).forEach(H=>{
     if(!H||!Array.isArray(H.time))return;
     H.time.forEach((t,i)=>{
-      if(!by.has(t))by.set(t,{temp:[],rh:[],pr:[],code:[],wind:[],gust:[],wdir:[],wave:[],waveDir:[]});
+      if(!by.has(t))by.set(t,{temp:[],rh:[],pr:[],pop:[],code:[],wind:[],gust:[],wdir:[],wave:[],waveDir:[]});
       const g=by.get(t);
-      ['temp','rh','pr','code','wind','gust','wdir','wave','waveDir'].forEach(k=>{if(H[k]&&H[k][i]!=null)g[k].push(H[k][i]);});
+      ['temp','rh','pr','pop','code','wind','gust','wdir','wave','waveDir'].forEach(k=>{if(H[k]&&H[k][i]!=null)g[k].push(H[k][i]);});
     });
   });
   [...by.keys()].sort((a,b)=>a-b).forEach(t=>{
     const g=by.get(t);out.time.push(t);
-    out.temp.push(roundAvg(g.temp));out.rh.push(roundAvg(g.rh));out.pr.push(avg(g.pr)!=null?Math.round(avg(g.pr)*10)/10:0);
+    out.temp.push(roundAvg(g.temp));out.rh.push(roundAvg(g.rh));out.pr.push(avg(g.pr)!=null?Math.round(avg(g.pr)*10)/10:0);out.pop.push(roundAvg(g.pop)||0);
     out.code.push(Number(common(g.code,0)));out.wind.push(roundAvg(g.wind));out.gust.push(roundMax(g.gust));out.wdir.push(roundAvg(g.wdir));
     out.wave.push(avg(g.wave)!=null?Math.round(avg(g.wave)*10)/10:null);out.waveDir.push(roundAvg(g.waveDir));
   });
@@ -206,6 +225,158 @@ function aggregateProvinceFromBeaches(beaches){
   return {days,hourly:aggregateHourly(values.map(x=>x.hourly))};
 }
 
+
+function stripHTML(x){return String(x||'').replace(/<script[\s\S]*?<\/script>/gi,' ').replace(/<style[\s\S]*?<\/style>/gi,' ').replace(/<[^>]+>/g,' ').replace(/&nbsp;/g,' ').replace(/&amp;/g,'&').replace(/&aacute;/gi,'á').replace(/&eacute;/gi,'é').replace(/&iacute;/gi,'í').replace(/&oacute;/gi,'ó').replace(/&uacute;/gi,'ú').replace(/&ntilde;/gi,'ñ').replace(/&#243;/g,'ó').replace(/&#237;/g,'í').replace(/\s+/g,' ').trim();}
+function norm(s){return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();}
+function htmlDecode(x){return stripHTML(String(x||'').replace(/<!\[CDATA\[|\]\]>/g,''));}
+async function getText(url){
+  const r=await fetch(url,{headers:{'user-agent':'playasdealmeria.es datos/1.0','accept':'text/html,application/rss+xml,application/xml,text/xml;q=0.9,*/*;q=0.8'}});
+  if(!r.ok)throw new Error('HTTP '+r.status+' '+url);
+  return await r.text();
+}
+function aemetDayFromURL(url){
+  const u=String(url||'');
+  if(/w=pmna/.test(u))return 2;
+  if(/w=mna/.test(u))return 1;
+  return 0;
+}
+function aemetZoneFromURL(url){
+  const m=String(url||'').match(/[?&]l=(610403|610404)\b/);
+  return m && AEMET_ZONE_CODES[m[1]] ? AEMET_ZONE_CODES[m[1]].zone : '';
+}
+function aemetColorFromText(t){
+  const n=norm(t);
+  if(/peligro\s+extremo|\brojo\b|nivel\s+rojo/.test(n))return 'rojo';
+  if(/peligro\s+importante|\bnaranja\b|nivel\s+naranja/.test(n))return 'naranja';
+  if(/peligro\s+bajo|\bamarillo\b|nivel\s+amarillo/.test(n))return 'amarillo';
+  return '';
+}
+function aemetPhenomenonFromText(t){
+  const n=norm(t);
+  return AEMET_PHENOMENA.find(x=>n.includes(norm(x)))||'';
+}
+function aemetZoneFromText(t){
+  const n=norm(t);
+  return AEMET_ZONE_NAMES.find(z=>n.includes(norm(z)))||(/\balmeria\b/.test(n)?'Almería':'');
+}
+function aemetProbabilityFromText(t){const m=String(t||'').match(/\b\d{1,3}%\s*-\s*\d{1,3}%\b|\b\d{1,3}%\b/);return m?m[0].replace(/\s+/g,''):'';}
+function aemetValueFromText(t){const m=String(t||'').match(/\b\d+(?:[,.]\d+)?\s*(?:mm|l\/m2|km\/h|ºC|°C|m\b|metros|fuerza\s*\d+)\b/i);return m?m[0].trim():'';}
+function aemetWebZonesForZone(zone){
+  const n=norm(zone);
+  if(!n||n==='almeria'||n.includes('provincia de almeria'))return ['Poniente','Capital','Cabo de Gata','Levante'];
+  if(n.includes('poniente')||n.includes('almeria capital'))return ['Poniente','Capital'];
+  if(n.includes('levante almeriense'))return ['Cabo de Gata','Levante'];
+  return [];
+}
+function makeAemetAlert(text,day,source,fallbackZone=''){
+  const clean=stripHTML(text);
+  const zone=aemetZoneFromText(clean)||fallbackZone;
+  const phenomenon=aemetPhenomenonFromText(clean);
+  if(!zone||!phenomenon)return null;
+  const color=aemetColorFromText(clean);
+  const probability=aemetProbabilityFromText(clean);
+  const value=aemetValueFromText(clean);
+  const comment=clean.length>220?clean.slice(0,217)+'…':clean;
+  const web_zones=aemetWebZonesForZone(zone);
+  return {day, phenomenon, color, zone, web_zones, value, probability, comment, source_url:source};
+}
+function aemetLikelyNoWarnings(text){
+  const n=norm(text);
+  return /no hay avisos meteorologicos|no existen avisos meteorologicos|sin avisos meteorologicos|no hay datos disponibles/.test(n)
+    && !AEMET_PHENOMENA.some(p => n.includes(norm(p)) && /peligro|amarillo|naranja|rojo|\d+\s*(mm|ºc|°c|km\/h|m\b)/.test(n));
+}
+function dedupeAemet(items){
+  const seen=new Set(),out=[];
+  for(const a of items||[]){
+    const k=[a.day,norm(a.phenomenon),norm(a.color),norm(a.zone),norm(a.value),norm(a.probability)].join('|');
+    if(seen.has(k))continue;seen.add(k);out.push(a);
+  }
+  return out.sort((a,b)=>(a.day??0)-(b.day??0)||String(a.zone).localeCompare(String(b.zone),'es')||String(a.phenomenon).localeCompare(String(b.phenomenon),'es'));
+}
+function parseAemetRSS(xml,url){
+  const items=[];
+  const blocks=[...String(xml||'').matchAll(/<item[\s\S]*?<\/item>/gi)].map(m=>m[0]);
+  const entries=blocks.length?blocks:[...String(xml||'').matchAll(/<entry[\s\S]*?<\/entry>/gi)].map(m=>m[0]);
+  for(const block of entries){
+    const title=htmlDecode((block.match(/<title[^>]*>([\s\S]*?)<\/title>/i)||[])[1]||'');
+    const desc=htmlDecode((block.match(/<description[^>]*>([\s\S]*?)<\/description>/i)||block.match(/<summary[^>]*>([\s\S]*?)<\/summary>/i)||block.match(/<content[^>]*>([\s\S]*?)<\/content>/i)||[])[1]||'');
+    const txt=(title+' · '+desc).trim();
+    if(!/almer[ií]a|poniente|levante almeriense|almanzora|v[eé]lez|tabernas/i.test(txt))continue;
+    const a=makeAemetAlert(txt,0,url);
+    if(a)items.push(a);
+  }
+  return items;
+}
+function parseAemetHTML(html,url){
+  const day=aemetDayFromURL(url),items=[];
+  const fallbackZone=aemetZoneFromURL(url);
+  const fullText=stripHTML(html);
+  if(aemetLikelyNoWarnings(fullText))return items;
+
+  const rows=[...String(html||'').matchAll(/<tr[\s\S]*?<\/tr>/gi)].map(m=>m[0]);
+  for(const row of rows){
+    const cells=[...row.matchAll(/<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi)].map(m=>stripHTML(m[1])).filter(Boolean);
+    if(cells.length<2)continue;
+    const txt=cells.join(' · ');
+    const a=makeAemetAlert(txt,day,url,fallbackZone);
+    if(a)items.push(a);
+  }
+  if(items.length)return items;
+
+  // Fallback textual: si AEMET cambia la tabla, buscamos ventanas alrededor de zonas y fenómenos.
+  const text=fullText;
+  const ntext=norm(text);
+  const scanZones=[...new Set([fallbackZone,...AEMET_ZONE_NAMES].filter(Boolean))];
+  for(const z of scanZones){
+    const nz=norm(z);let pos=ntext.indexOf(nz);
+    while(pos>=0){
+      const frag=text.slice(Math.max(0,pos-220),Math.min(text.length,pos+520));
+      const a=makeAemetAlert(frag,day,url,z);
+      if(a)items.push(a);
+      pos=ntext.indexOf(nz,pos+nz.length);
+    }
+  }
+  if(items.length)return items;
+
+  // En las páginas directas de zona, algunas filas no repiten el nombre de zona.
+  if(fallbackZone){
+    for(const p of AEMET_PHENOMENA){
+      const np=norm(p);let pos=ntext.indexOf(np);
+      while(pos>=0){
+        const frag=text.slice(Math.max(0,pos-80),Math.min(text.length,pos+520));
+        const a=makeAemetAlert(frag,day,url,fallbackZone);
+        if(a)items.push(a);
+        pos=ntext.indexOf(np,pos+np.length);
+      }
+    }
+  }
+  return items;
+}
+async function fetchAemetAlerts(){
+  const started=new Date().toISOString();
+  const items=[]; const errors=[];
+  let okSources=0;
+  for(const url of AEMET_HTML_URLS){
+    try{
+      const html=await getText(url);
+      okSources++;
+      items.push(...parseAemetHTML(html,url));
+    }catch(e){
+      errors.push(e.message);
+    } 
+  }
+  const out=dedupeAemet(items).slice(0,30);
+  return {
+    source:'AEMET Meteoalerta',
+    fetched_at:started,
+    ok:okSources>0,
+    items:out,
+    checked_days:AEMET_DAYS.map(d=>d.label),
+    checked_zones:Object.values(AEMET_ZONE_CODES).map(z=>z.zone),
+    errors:errors.slice(0,5)
+  };
+}
+
 async function main(){
   const catalog=JSON.parse(await readFile(new URL('./playas_catalogo.json',import.meta.url),'utf8'));
   if(!Array.isArray(catalog)||!catalog.length)throw new Error('playas_catalogo.json vacío');
@@ -225,17 +396,21 @@ async function main(){
   // La máxima/minima de "Hoy en la costa de Almería" sale de las playas, no de un punto fijo.
   const province=aggregateProvinceFromBeaches(beaches);
 
+  console.log('Consultando avisos oficiales AEMET…');
+  const aemet_alerts=await fetchAemetAlerts().catch(e=>({source:'AEMET Meteoalerta',fetched_at:new Date().toISOString(),ok:false,items:[],errors:[e.message]}));
+
   const out={
     generated_at:new Date().toISOString(),
-    source:'Open-Meteo (forecast + marine + air-quality)',
+    source:'Open-Meteo (forecast + marine + air-quality) + AEMET Meteoalerta',
     province,
+    aemet_alerts,
     beaches,
     air
   };
   await writeFile(new URL('./datos_playas.json',import.meta.url),JSON.stringify(out));
   const okBeaches=Object.keys(beaches).length;
   const okAir=Object.values(air).filter(a=>!a.error).length;
-  console.log(`OK · ${okBeaches} playas con clima/mar · ${okAir} con calidad del aire · resumen costa ${province?'sí':'no'}`);
+  console.log(`OK · ${okBeaches} playas con clima/mar · ${okAir} con calidad del aire · resumen costa ${province?'sí':'no'} · avisos AEMET ${aemet_alerts.items.length}`);
 }
 
 main().catch(e=>{console.error('ERROR:',e);process.exit(1)});
