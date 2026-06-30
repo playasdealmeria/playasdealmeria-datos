@@ -16,6 +16,9 @@ jobs:
   update-data:
     name: Generar y guardar datos_playas.json
     runs-on: ubuntu-latest
+    env:
+      AEMET_API_KEY: ${{ secrets.AEMET_API_KEY }}
+      AEMET_OPENDATA_AREA: esp
 
     steps:
       - name: Descargar repositorio
@@ -35,9 +38,6 @@ jobs:
           git reset --hard origin/main
 
       - name: Generar datos meteorológicos
-        env:
-          AEMET_API_KEY: ${{ secrets.AEMET_API_KEY }}
-          AEMET_OPENDATA_AREA: esp
         run: node build-data.mjs
 
       - name: Validar JSON generado
