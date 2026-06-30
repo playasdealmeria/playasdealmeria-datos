@@ -11,6 +11,7 @@
  * Ejecutar:  node build-data.mjs   (requiere Node 18+, fetch global)
  */
 import { readFile, writeFile } from 'node:fs/promises';
+import { gunzipSync, unzipSync } from 'node:zlib';
 
 const FORECAST_DAYS = 7;
 const CONCURRENCY = 5;
@@ -33,6 +34,10 @@ const AEMET_HTML_URLS = [
 ];
 const AEMET_ZONE_NAMES = ['Poniente y Almería Capital','Levante almeriense','Valle del Almanzora y Los Vélez','Nacimiento y Campo de Tabernas','Poniente y Almería Capital - Costa','Levante almeriense - Costa'];
 const AEMET_PHENOMENA = ['Fenómenos costeros','Temperaturas máximas','Temperaturas mínimas','Vientos','Lluvias','Tormentas','Nevadas','Nieblas','Polvo en suspensión','Rissagas','Aludes'];
+const AEMET_OPENDATA_ENDPOINT = 'https://opendata.aemet.es/opendata/api/avisos_cap/ultimoelaborado/area';
+const AEMET_OPENDATA_AREAS = String(process.env.AEMET_OPENDATA_AREA||'esp').split(',').map(x=>x.trim()).filter(Boolean);
+const AEMET_COASTAL_ZONE_CODES = new Set(Object.keys(AEMET_ZONE_CODES));
+
 
 // ---- helpers portados 1:1 desde la app ----
 function avg(arr){const v=(arr||[]).filter(x=>x!=null&&!Number.isNaN(x));return v.length?v.reduce((a,b)=>a+b,0)/v.length:null;}
@@ -229,10 +234,21 @@ function aggregateProvinceFromBeaches(beaches){
 function stripHTML(x){return String(x||'').replace(/<script[\s\S]*?<\/script>/gi,' ').replace(/<style[\s\S]*?<\/style>/gi,' ').replace(/<[^>]+>/g,' ').replace(/&nbsp;/g,' ').replace(/&amp;/g,'&').replace(/&aacute;/gi,'á').replace(/&eacute;/gi,'é').replace(/&iacute;/gi,'í').replace(/&oacute;/gi,'ó').replace(/&uacute;/gi,'ú').replace(/&ntilde;/gi,'ñ').replace(/&#243;/g,'ó').replace(/&#237;/g,'í').replace(/\s+/g,' ').trim();}
 function norm(s){return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();}
 function htmlDecode(x){return stripHTML(String(x||'').replace(/<!\[CDATA\[|\]\]>/g,''));}
+function xmlDecode(x){return htmlDecode(String(x||'').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&apos;/g,"'"));}
 async function getText(url){
   const r=await fetch(url,{headers:{'user-agent':'playasdealmeria.es datos/1.0','accept':'text/html,application/rss+xml,application/xml,text/xml;q=0.9,*/*;q=0.8'}});
   if(!r.ok)throw new Error('HTTP '+r.status+' '+url);
   return await r.text();
+}
+async function getAemetJSON(url){
+  const r=await fetch(url,{headers:{'user-agent':'playasdealmeria.es datos/1.0','accept':'application/json'}});
+  if(!r.ok)throw new Error('HTTP '+r.status+' '+url);
+  return await r.json();
+}
+async function getBinary(url){
+  const r=await fetch(url,{headers:{'user-agent':'playasdealmeria.es datos/1.0','accept':'application/xml,text/xml,application/gzip,application/x-tar,*/*'}});
+  if(!r.ok)throw new Error('HTTP '+r.status+' '+url);
+  return {buffer:Buffer.from(await r.arrayBuffer()),contentType:r.headers.get('content-type')||'',contentEncoding:r.headers.get('content-encoding')||''};
 }
 function aemetDayFromURL(url){
   const u=String(url||'');
@@ -246,9 +262,9 @@ function aemetZoneFromURL(url){
 }
 function aemetColorFromText(t){
   const n=norm(t);
-  if(/peligro\s+extremo|\brojo\b|nivel\s+rojo/.test(n))return 'rojo';
-  if(/peligro\s+importante|\bnaranja\b|nivel\s+naranja/.test(n))return 'naranja';
-  if(/peligro\s+bajo|\bamarillo\b|nivel\s+amarillo/.test(n))return 'amarillo';
+  if(/peligro\s+extremo|\brojo\b|nivel\s+rojo|\bred\b/.test(n))return 'rojo';
+  if(/peligro\s+importante|\bnaranja\b|nivel\s+naranja|\borange\b/.test(n))return 'naranja';
+  if(/peligro\s+bajo|\bamarillo\b|nivel\s+amarillo|\byellow\b/.test(n))return 'amarillo';
   return '';
 }
 function aemetPhenomenonFromText(t){
@@ -259,7 +275,7 @@ function aemetZoneFromText(t){
   const n=norm(t);
   return AEMET_ZONE_NAMES.find(z=>n.includes(norm(z)))||(/\balmeria\b/.test(n)?'Almería':'');
 }
-function aemetProbabilityFromText(t){const m=String(t||'').match(/\b\d{1,3}%\s*-\s*\d{1,3}%\b|\b\d{1,3}%\b/);return m?m[0].replace(/\s+/g,''):'';}
+function aemetProbabilityFromText(t){const m=String(t||'').match(/\b\d{1,3}%\s*-\s*\d{1,3}%\b|mayor\s+70%|\b\d{1,3}%\b/i);return m?m[0].replace(/\s+/g,''):'';}
 function aemetValueFromText(t){const m=String(t||'').match(/\b\d+(?:[,.]\d+)?\s*(?:mm|l\/m2|km\/h|ºC|°C|m\b|metros|fuerza\s*\d+)\b/i);return m?m[0].trim():'';}
 function aemetWebZonesForZone(zone){
   const n=norm(zone);
@@ -288,7 +304,7 @@ function aemetLikelyNoWarnings(text){
 function dedupeAemet(items){
   const seen=new Set(),out=[];
   for(const a of items||[]){
-    const k=[a.day,norm(a.phenomenon),norm(a.color),norm(a.zone),norm(a.value),norm(a.probability)].join('|');
+    const k=[a.day,norm(a.phenomenon),norm(a.color),norm(a.zone),norm(a.value),norm(a.probability),norm(a.onset||''),norm(a.expires||'')].join('|');
     if(seen.has(k))continue;seen.add(k);out.push(a);
   }
   return out.sort((a,b)=>(a.day??0)-(b.day??0)||String(a.zone).localeCompare(String(b.zone),'es')||String(a.phenomenon).localeCompare(String(b.phenomenon),'es'));
@@ -308,12 +324,12 @@ function parseAemetRSS(xml,url){
   return items;
 }
 function parseAemetHTML(html,url){
-  const day=aemetDayFromURL(url),items=[];
+  const day=aemetDayFromURL(url),items=[],warnings=[];
   const fallbackZone=aemetZoneFromURL(url);
   const fullText=stripHTML(html);
-  if(aemetLikelyNoWarnings(fullText))return items;
-
   const rows=[...String(html||'').matchAll(/<tr[\s\S]*?<\/tr>/gi)].map(m=>m[0]);
+  const noWarning=aemetLikelyNoWarnings(fullText);
+  if(noWarning)return {items, method:'html_no_warning_text', rows:rows.length, fallback_used:false, warnings};
   for(const row of rows){
     const cells=[...row.matchAll(/<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi)].map(m=>stripHTML(m[1])).filter(Boolean);
     if(cells.length<2)continue;
@@ -321,9 +337,7 @@ function parseAemetHTML(html,url){
     const a=makeAemetAlert(txt,day,url,fallbackZone);
     if(a)items.push(a);
   }
-  if(items.length)return items;
-
-  // Fallback textual: si AEMET cambia la tabla, buscamos ventanas alrededor de zonas y fenómenos.
+  if(items.length)return {items, method:'html_table', rows:rows.length, fallback_used:false, warnings};
   const text=fullText;
   const ntext=norm(text);
   const scanZones=[...new Set([fallbackZone,...AEMET_ZONE_NAMES].filter(Boolean))];
@@ -336,9 +350,7 @@ function parseAemetHTML(html,url){
       pos=ntext.indexOf(nz,pos+nz.length);
     }
   }
-  if(items.length)return items;
-
-  // En las páginas directas de zona, algunas filas no repiten el nombre de zona.
+  if(items.length)return {items, method:'html_text_fallback_zone', rows:rows.length, fallback_used:true, warnings};
   if(fallbackZone){
     for(const p of AEMET_PHENOMENA){
       const np=norm(p);let pos=ntext.indexOf(np);
@@ -350,30 +362,203 @@ function parseAemetHTML(html,url){
       }
     }
   }
-  return items;
+  if(items.length)return {items, method:'html_text_fallback_phenomenon', rows:rows.length, fallback_used:true, warnings};
+  if(!rows.length)warnings.push('AEMET HTML sin tabla <tr>; posible cambio de diseño.');
+  else warnings.push(`AEMET HTML con ${rows.length} filas, pero sin avisos parseables ni texto claro de sin avisos.`);
+  return {items, method:'html_unparsed', rows:rows.length, fallback_used:true, warnings};
 }
-async function fetchAemetAlerts(){
+function xmlBlocks(xml,tag){const re=new RegExp(`<(?:\\w+:)?${tag}\\b[^>]*>[\\s\\S]*?<\\/(?:\\w+:)?${tag}>`,'gi');return [...String(xml||'').matchAll(re)].map(m=>m[0]);}
+function xmlTag(xml,tag){const re=new RegExp(`<(?:\\w+:)?${tag}\\b[^>]*>([\\s\\S]*?)<\\/(?:\\w+:)?${tag}>`,'i');const m=String(xml||'').match(re);return m?xmlDecode(m[1]).trim():'';}
+function parameterValue(info,needle){
+  const n=norm(needle);
+  for(const p of xmlBlocks(info,'parameter')){
+    const vn=norm(xmlTag(p,'valueName'));
+    const v=xmlTag(p,'value');
+    if(vn.includes(n))return v;
+  }
+  return '';
+}
+function eventCodePhenomenon(info){
+  for(const p of xmlBlocks(info,'eventCode')){
+    const vn=norm(xmlTag(p,'valueName'));
+    const v=xmlTag(p,'value');
+    if(vn.includes('fenomeno')||vn.includes('aemet-meteoalerta')){
+      const parts=String(v||'').split(';');
+      return parts.length>1?parts.slice(1).join(';').trim():v;
+    }
+  }
+  return '';
+}
+function areaCode(area){
+  for(const g of xmlBlocks(area,'geocode')){
+    const vn=norm(xmlTag(g,'valueName'));
+    const v=xmlTag(g,'value').trim();
+    if(vn.includes('zona')||/^\d{6}$/.test(v))return v;
+  }
+  return '';
+}
+function madridDateParts(date){
+  const d=date instanceof Date?date:new Date(date);
+  if(Number.isNaN(d.getTime()))return null;
+  const parts=new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Madrid',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(d);
+  const o={};parts.forEach(p=>{o[p.type]=p.value;});
+  return {y:Number(o.year),m:Number(o.month),d:Number(o.day)};
+}
+function dayIndexMadrid(dateStr){
+  const p=madridDateParts(dateStr),n=madridDateParts(new Date());
+  if(!p||!n)return 0;
+  const a=Date.UTC(p.y,p.m-1,p.d),b=Date.UTC(n.y,n.m-1,n.d);
+  return Math.round((a-b)/86400000);
+}
+function decodeAemetPayload(buffer,contentType='',contentEncoding=''){
+  let buf=Buffer.from(buffer);
+  const first2=buf.length>=2?`${buf[0].toString(16).padStart(2,'0')}${buf[1].toString(16).padStart(2,'0')}`:'';
+  if(/gzip/i.test(contentEncoding)||/gzip/i.test(contentType)||first2==='1f8b'){
+    try{buf=gunzipSync(buf);}catch(e){try{buf=unzipSync(buf);}catch{throw e;}}
+  }
+  const asText=buf.toString('utf8');
+  if(/<alert\b|<cap:alert\b/i.test(asText))return [asText];
+  const texts=[];let off=0;
+  while(off+512<=buf.length){
+    const name=buf.slice(off,off+100).toString('utf8').replace(/\0.*$/,'').trim();
+    if(!name)break;
+    const sizeText=buf.slice(off+124,off+136).toString('utf8').replace(/\0.*$/,'').trim();
+    const size=parseInt(sizeText||'0',8);
+    const start=off+512,end=start+size;
+    if(size>0&&end<=buf.length){
+      const txt=buf.slice(start,end).toString('utf8');
+      if(/\.xml$/i.test(name)||/<alert\b|<cap:alert\b/i.test(txt))texts.push(txt);
+    }
+    off=start+Math.ceil(size/512)*512;
+  }
+  return texts.length?texts:[asText];
+}
+function parseAemetCAP(xml,source){
+  const items=[];let capMessages=0, warningMessages=0, minorMessages=0;
+  for(const alert of xmlBlocks(xml,'alert')){
+    capMessages++;
+    const sent=xmlTag(alert,'sent');
+    const status=xmlTag(alert,'status');
+    const msgType=xmlTag(alert,'msgType');
+    const infos=xmlBlocks(alert,'info');
+    const info=infos.find(x=>/^es/i.test(xmlTag(x,'language'))) || infos[0] || alert;
+    const severity=xmlTag(info,'severity')||xmlTag(alert,'severity');
+    const headline=xmlTag(info,'headline');
+    const description=xmlTag(info,'description');
+    const instruction=xmlTag(info,'instruction');
+    const event=xmlTag(info,'event')||eventCodePhenomenon(info)||aemetPhenomenonFromText(headline+' '+description);
+    let phenomenon=aemetPhenomenonFromText(event)||aemetPhenomenonFromText(headline+' '+description)||eventCodePhenomenon(info);
+    const levelParam=parameterValue(info,'nivel');
+    let color=aemetColorFromText(levelParam)||aemetColorFromText(event+' '+headline+' '+description);
+    const param=parameterValue(info,'parametro');
+    const prob=parameterValue(info,'probabilidad')||aemetProbabilityFromText(description+' '+headline);
+    const value=(param&&String(param).split(';').slice(2).join(';').trim())||aemetValueFromText(description+' '+headline);
+    const onset=xmlTag(info,'onset')||xmlTag(info,'effective')||sent;
+    const expires=xmlTag(info,'expires');
+    const day=dayIndexMadrid(onset||sent||new Date());
+    if(day<0||day>2)continue;
+    if(!phenomenon)phenomenon=aemetPhenomenonFromText(headline+' '+description);
+    const areas=xmlBlocks(alert,'area');
+    const isMinor=/minor/i.test(severity)||/sin aviso/i.test(event+' '+headline+' '+description);
+    if(isMinor&&!color){minorMessages++;continue;}
+    for(const area of areas){
+      const code=areaCode(area);
+      const areaDesc=xmlTag(area,'areaDesc');
+      const zone=AEMET_ZONE_CODES[code]?.zone || aemetZoneFromText(areaDesc) || areaDesc;
+      if(code&&!AEMET_COASTAL_ZONE_CODES.has(code))continue;
+      if(!code&&!aemetWebZonesForZone(zone).length)continue;
+      if(!phenomenon||!zone)continue;
+      warningMessages++;
+      const web_zones=AEMET_ZONE_CODES[code]?.web_zones || aemetWebZonesForZone(zone);
+      items.push({day, phenomenon, color, zone, web_zones, value, probability:prob, period:onset&&expires?`${onset} - ${expires}`:'', onset, expires, comment:(description||headline||instruction||'').slice(0,260), source_url:source, source_method:'opendata_cap', cap_status:status, cap_msgType:msgType});
+    }
+  }
+  return {items,capMessages,warningMessages,minorMessages};
+}
+async function fetchAemetOpenDataAlerts(){
+  const key=String(process.env.AEMET_API_KEY||'').trim();
   const started=new Date().toISOString();
-  const items=[]; const errors=[];
-  let okSources=0;
+  if(!key)throw new Error('AEMET_API_KEY no configurada');
+  const all=[];const diagnostics={areas:[],cap_messages:0,warning_messages:0,minor_messages:0};
+  for(const area of AEMET_OPENDATA_AREAS){
+    const apiUrl=`${AEMET_OPENDATA_ENDPOINT}/${encodeURIComponent(area)}?api_key=${encodeURIComponent(key)}`;
+    const env=await getAemetJSON(apiUrl);
+    if(Number(env.estado||200)>=400||!env.datos)throw new Error(`AEMET OpenData sin datos para area ${area}: ${env.descripcion||env.estado||'respuesta inválida'}`);
+    const bin=await getBinary(env.datos);
+    const texts=decodeAemetPayload(bin.buffer,bin.contentType,bin.contentEncoding);
+    const areaDiag={area,files:texts.length,datos:env.datos};
+    for(const txt of texts){
+      const parsed=parseAemetCAP(txt,env.datos);
+      all.push(...parsed.items);
+      diagnostics.cap_messages+=parsed.capMessages;
+      diagnostics.warning_messages+=parsed.warningMessages;
+      diagnostics.minor_messages+=parsed.minorMessages;
+    }
+    diagnostics.areas.push(areaDiag);
+  }
+  return {started,items:dedupeAemet(all),diagnostics};
+}
+async function fetchAemetHTMLAlerts(){
+  const items=[]; const errors=[]; const warnings=[]; const methods={};
+  let okSources=0, fallbackUsed=0, tableRows=0;
   for(const url of AEMET_HTML_URLS){
     try{
       const html=await getText(url);
       okSources++;
-      items.push(...parseAemetHTML(html,url));
+      const parsed=parseAemetHTML(html,url);
+      items.push(...parsed.items);
+      methods[parsed.method]=(methods[parsed.method]||0)+1;
+      tableRows+=parsed.rows||0;
+      if(parsed.fallback_used)fallbackUsed++;
+      warnings.push(...(parsed.warnings||[]).map(w=>`${w} (${url})`));
     }catch(e){
       errors.push(e.message);
-    } 
+    }
   }
-  const out=dedupeAemet(items).slice(0,30);
+  return {items:dedupeAemet(items),okSources,errors,warnings,methods,fallbackUsed,tableRows};
+}
+async function fetchAemetAlerts(){
+  const started=new Date().toISOString();
+  const errors=[]; const warnings=[];
+  const hasKey=!!String(process.env.AEMET_API_KEY||'').trim();
+  if(hasKey){
+    try{
+      const api=await fetchAemetOpenDataAlerts();
+      return {
+        source:'AEMET Meteoalerta',
+        fetched_at:api.started||started,
+        ok:true,
+        method:'opendata_cap',
+        items:api.items.slice(0,50),
+        checked_days:AEMET_DAYS.map(d=>d.label),
+        checked_zones:Object.values(AEMET_ZONE_CODES).map(z=>z.zone),
+        opendata:{enabled:true,areas:AEMET_OPENDATA_AREAS,cap_messages:api.diagnostics.cap_messages,warning_messages:api.diagnostics.warning_messages,minor_messages:api.diagnostics.minor_messages,files:api.diagnostics.areas.reduce((a,b)=>a+(b.files||0),0)},
+        html_fallback_used:false,
+        errors:[],
+        warnings:[]
+      };
+    }catch(e){
+      errors.push('OpenData: '+e.message);
+      warnings.push('Se usa fallback HTML porque AEMET OpenData ha fallado.');
+    }
+  }else{
+    warnings.push('AEMET_API_KEY no configurada; se usa fallback HTML.');
+  }
+  const html=await fetchAemetHTMLAlerts();
+  warnings.push(...html.warnings);
   return {
     source:'AEMET Meteoalerta',
     fetched_at:started,
-    ok:okSources>0,
-    items:out,
+    ok:html.okSources>0,
+    method:'html_fallback',
+    items:html.items.slice(0,30),
     checked_days:AEMET_DAYS.map(d=>d.label),
     checked_zones:Object.values(AEMET_ZONE_CODES).map(z=>z.zone),
-    errors:errors.slice(0,5)
+    opendata:{enabled:hasKey,areas:AEMET_OPENDATA_AREAS},
+    html:{ok_sources:html.okSources,methods:html.methods,fallback_used:html.fallbackUsed,table_rows:html.tableRows},
+    html_fallback_used:true,
+    errors:[...errors,...html.errors].slice(0,8),
+    warnings:warnings.slice(0,12)
   };
 }
 

@@ -35,6 +35,9 @@ jobs:
           git reset --hard origin/main
 
       - name: Generar datos meteorológicos
+        env:
+          AEMET_API_KEY: ${{ secrets.AEMET_API_KEY }}
+          AEMET_OPENDATA_AREA: esp
         run: node build-data.mjs
 
       - name: Validar JSON generado

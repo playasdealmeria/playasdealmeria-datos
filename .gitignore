@@ -1,0 +1,12 @@
+# Dependencias y temporales
+node_modules/
+.cache/
+.DS_Store
+Thumbs.db
+*.log
+npm-debug.log*
+.env
+.env.*
+*.bak
+*.tmp
+*.zip
