@@ -36,6 +36,9 @@ const AEMET_ZONE_NAMES = ['Poniente y Almería Capital','Levante almeriense','Va
 const AEMET_PHENOMENA = ['Fenómenos costeros','Temperaturas máximas','Temperaturas mínimas','Vientos','Lluvias','Tormentas','Nevadas','Nieblas','Polvo en suspensión','Rissagas','Aludes'];
 const AEMET_OPENDATA_ENDPOINT = 'https://opendata.aemet.es/opendata/api/avisos_cap/ultimoelaborado/area';
 const AEMET_OPENDATA_AREAS = String(process.env.AEMET_OPENDATA_AREA||'esp').split(',').map(x=>x.trim()).filter(Boolean);
+// v91.3 datos: AEMET se cachea internamente para evitar rate-limit.
+// El workflow puede seguir actualizando tiempo/mar cada hora, pero OpenData no se golpea en cada ejecución.
+const AEMET_CACHE_HOURS = Math.max(1, Number(process.env.AEMET_CACHE_HOURS||3));
 const AEMET_COASTAL_ZONE_CODES = new Set(Object.keys(AEMET_ZONE_CODES));
 
 
@@ -68,7 +71,7 @@ function summarizePart(dateStr,startHour,endHour,wh,mh){
 
 async function getJSON(url){
   const r=await fetch(url,{headers:{'user-agent':'playasdealmeria.es datos/1.0'}});
-  if(!r.ok)throw new Error('HTTP '+r.status+' '+url);
+  if(!r.ok)throw new Error('HTTP '+r.status+' '+sanitizeURLForLog(url));
   return r.json();
 }
 
@@ -241,6 +244,38 @@ function sanitizeURLForLog(url){
 function sanitizeErrorMessage(msg){
   return sanitizeURLForLog(String(msg||''))
     .replace(/eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g,'[redacted-token]');
+}
+
+function sanitizeAemetRecord(record, opts={}){
+  const a=record&&typeof record==='object'?JSON.parse(JSON.stringify(record)):{};
+  a.source=a.source||'AEMET Meteoalerta';
+  a.fetched_at=a.fetched_at||new Date().toISOString();
+  a.items=Array.isArray(a.items)?a.items:[];
+  a.errors=(Array.isArray(a.errors)?a.errors:[]).map(sanitizeErrorMessage).slice(0,8);
+  a.warnings=(Array.isArray(a.warnings)?a.warnings:[]).map(sanitizeErrorMessage).slice(0,12);
+  if(a.method!=='opendata_cap' || a.html_fallback_used || a.errors.length){
+    a.ok=false;
+  }else{
+    a.ok=!!a.ok;
+  }
+  if(opts.cached){a.cached=true;a.cache_age_minutes=opts.cacheAgeMinutes;}
+  if(opts.staleFrom){a.stale_items_used=true;a.stale_from=opts.staleFrom;}
+  return a;
+}
+function aemetAgeMinutes(a){
+  const t=Date.parse(a&&a.fetched_at||'');
+  if(!Number.isFinite(t))return Infinity;
+  return Math.max(0,Math.round((Date.now()-t)/60000));
+}
+function shouldReuseAemet(a){
+  const age=aemetAgeMinutes(a);
+  return Number.isFinite(age) && age <= AEMET_CACHE_HOURS*60;
+}
+async function readPreviousAemet(){
+  try{
+    const prev=JSON.parse(await readFile(new URL('./datos_playas.json',import.meta.url),'utf8'));
+    return prev&&prev.aemet_alerts?prev.aemet_alerts:null;
+  }catch(e){return null;}
 }
 
 function stripHTML(x){return String(x||'').replace(/<script[\s\S]*?<\/script>/gi,' ').replace(/<style[\s\S]*?<\/style>/gi,' ').replace(/<[^>]+>/g,' ').replace(/&nbsp;/g,' ').replace(/&amp;/g,'&').replace(/&aacute;/gi,'á').replace(/&eacute;/gi,'é').replace(/&iacute;/gi,'í').replace(/&oacute;/gi,'ó').replace(/&uacute;/gi,'ú').replace(/&ntilde;/gi,'ñ').replace(/&#243;/g,'ó').replace(/&#237;/g,'í').replace(/\s+/g,' ').trim();}
@@ -529,9 +564,16 @@ async function fetchAemetHTMLAlerts(){
   }
   return {items:dedupeAemet(items),okSources,errors,warnings,methods,fallbackUsed,tableRows};
 }
-async function fetchAemetAlerts(){
+async function fetchAemetAlerts(previousAemet=null){
   const started=new Date().toISOString();
   const errors=[]; const warnings=[];
+  const prev=previousAemet?sanitizeAemetRecord(previousAemet):null;
+  if(prev&&shouldReuseAemet(prev)){
+    const age=aemetAgeMinutes(prev);
+    const reused=sanitizeAemetRecord(prev,{cached:true,cacheAgeMinutes:age});
+    if(!reused.warnings.some(w=>/cache/i.test(w)))reused.warnings.push(`AEMET reutilizado desde caché interna (${age} min) para evitar rate-limit.`);
+    return reused;
+  }
   const hasKey=!!String(process.env.AEMET_API_KEY||'').trim();
   if(hasKey){
     try{
@@ -557,24 +599,33 @@ async function fetchAemetAlerts(){
     warnings.push('AEMET_API_KEY no configurada; se usa fallback HTML.');
   }
   const html=await fetchAemetHTMLAlerts();
-  warnings.push(...html.warnings);
+  warnings.push(...html.warnings.map(sanitizeErrorMessage));
   if(html.okSources>0 && html.items.length===0 && html.tableRows===0){
     warnings.push('AEMET HTML leído pero sin avisos estructurados; no se considera una fuente fiable si OpenData falla.');
   }
-  return {
+  const prevGood=prev && prev.method==='opendata_cap' && Array.isArray(prev.items) ? prev : null;
+  const items=(html.items&&html.items.length)?html.items.slice(0,30):(prevGood?prevGood.items.slice(0,50):[]);
+  const result={
     source:'AEMET Meteoalerta',
     fetched_at:started,
-    ok:html.okSources>0 && (html.items.length>0 || html.tableRows>0 || html.fallbackUsed<html.okSources),
+    // Si OpenData falla, la salud es false aunque haya fallback o datos antiguos.
+    ok:false,
     method:'html_fallback',
-    items:html.items.slice(0,30),
+    items,
     checked_days:AEMET_DAYS.map(d=>d.label),
     checked_zones:Object.values(AEMET_ZONE_CODES).map(z=>z.zone),
     opendata:{enabled:hasKey,areas:AEMET_OPENDATA_AREAS},
     html:{ok_sources:html.okSources,methods:html.methods,fallback_used:html.fallbackUsed,table_rows:html.tableRows},
     html_fallback_used:true,
-    errors:[...errors,...html.errors].slice(0,8),
-    warnings:warnings.slice(0,12)
+    errors:[...errors,...html.errors].map(sanitizeErrorMessage).slice(0,8),
+    warnings:warnings.map(sanitizeErrorMessage).slice(0,12)
   };
+  if(prevGood && !(html.items&&html.items.length)){
+    result.stale_items_used=true;
+    result.stale_from=prevGood.fetched_at||'';
+    result.warnings.unshift('Se conservan los últimos avisos oficiales válidos porque AEMET OpenData ha fallado ahora.');
+  }
+  return sanitizeAemetRecord(result);
 }
 
 async function main(){
@@ -597,7 +648,8 @@ async function main(){
   const province=aggregateProvinceFromBeaches(beaches);
 
   console.log('Consultando avisos oficiales AEMET…');
-  const aemet_alerts=await fetchAemetAlerts().catch(e=>({source:'AEMET Meteoalerta',fetched_at:new Date().toISOString(),ok:false,items:[],errors:[sanitizeErrorMessage(e.message)]}));
+  const previousAemet=await readPreviousAemet();
+  const aemet_alerts=await fetchAemetAlerts(previousAemet).catch(e=>sanitizeAemetRecord({source:'AEMET Meteoalerta',fetched_at:new Date().toISOString(),ok:false,items:[],errors:[sanitizeErrorMessage(e.message)]}));
 
   const out={
     generated_at:new Date().toISOString(),
