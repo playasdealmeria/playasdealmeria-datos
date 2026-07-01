@@ -3,7 +3,10 @@ name: Actualizar datos meteorológicos
 on:
   workflow_dispatch:
   schedule:
-    - cron: "17 * * * *"
+    # Cada 30 minutos. Usamos minutos 17 y 47 para evitar el minuto 00,
+    # donde GitHub suele acumular más carga y puede retrasar o saltarse ejecuciones.
+    # Importante: GitHub Actions cron usa UTC.
+    - cron: "17,47 * * * *"
 
 permissions:
   contents: write
@@ -16,6 +19,7 @@ jobs:
   update-data:
     name: Generar y guardar datos_playas.json
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     env:
       AEMET_API_KEY: ${{ secrets.AEMET_API_KEY }}
       AEMET_OPENDATA_AREA: esp
@@ -37,13 +41,41 @@ jobs:
           git checkout main
           git reset --hard origin/main
 
+      - name: Validar secret AEMET
+        run: |
+          if [ -z "$AEMET_API_KEY" ]; then
+            echo "::error::Falta el secret AEMET_API_KEY en este repositorio"
+            exit 1
+          fi
+          echo "AEMET_API_KEY configurada"
+
+      - name: Comprobar sintaxis del generador
+        run: node --check build-data.mjs
+
       - name: Generar datos meteorológicos
         run: node build-data.mjs
 
       - name: Validar JSON generado
         run: |
           test -f datos_playas.json
-          node -e "JSON.parse(require('fs').readFileSync('datos_playas.json','utf8')); console.log('JSON OK')"
+          node - <<'NODE'
+          const fs = require('fs');
+          const raw = fs.readFileSync('datos_playas.json','utf8');
+          const json = JSON.parse(raw);
+          console.log('JSON OK');
+          console.log('generated_at:', json.generated_at || json.updated_at || '(sin fecha)');
+          console.log('aemet ok:', json.aemet_alerts && json.aemet_alerts.ok);
+          const leaks = {
+            api_key: raw.includes('api_key='),
+            jwt: raw.includes('eyJ'),
+            http429: raw.includes('HTTP 429')
+          };
+          console.log('security:', leaks);
+          if (leaks.api_key || leaks.jwt) {
+            console.error('Se ha detectado posible contenido sensible en datos_playas.json');
+            process.exit(1);
+          }
+          NODE
 
       - name: Commit y push si hay cambios
         run: |

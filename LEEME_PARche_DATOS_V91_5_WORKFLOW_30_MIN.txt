@@ -1,0 +1,36 @@
+PARCHE DATOS v91.5 - Workflow cada 30 minutos
+
+Repo destino:
+  playasdealmeria-datos
+
+Archivo que modifica:
+  .github/workflows/update-data.yml
+
+Qué cambia:
+  - El workflow pasa a ejecutarse cada 30 minutos:
+      17,47 * * * *
+  - Mantiene workflow_dispatch para lanzarlo manualmente desde GitHub.
+  - Mantiene validación de AEMET_API_KEY.
+  - Mantiene validación de datos_playas.json.
+  - Mantiene protección básica contra filtrado de api_key/JWT.
+  - Mantiene commit/push automático si datos_playas.json cambia.
+
+Nota importante:
+  GitHub Actions interpreta el cron en UTC. Al ser cada hora a los minutos 17 y 47,
+  no hace falta ajustar horario peninsular.
+
+Cómo aplicarlo:
+  1. Copia la carpeta .github dentro de tu repo playasdealmeria-datos.
+  2. Sobrescribe .github/workflows/update-data.yml.
+  3. Ejecuta:
+
+     cd "C:\Users\Fede Romero\Documents\Docs Fede\Apps\GitHub\playasdealmeria-datos"
+     git status
+     git add .github/workflows/update-data.yml
+     git commit -m "v91.5 workflow datos cada 30 minutos"
+     git push
+
+Después:
+  - En GitHub, entra en Actions > Actualizar datos meteorológicos > Run workflow.
+  - Comprueba que datos_playas.json tiene un generated_at nuevo.
+  - No hace falta deploy manual en Netlify.
