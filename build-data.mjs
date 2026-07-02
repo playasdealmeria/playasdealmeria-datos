@@ -46,7 +46,7 @@ const AEMET_COASTAL_ZONE_CODES = new Set(Object.keys(AEMET_ZONE_CODES));
 function avg(arr){const v=(arr||[]).filter(x=>x!=null&&!Number.isNaN(x));return v.length?v.reduce((a,b)=>a+b,0)/v.length:null;}
 function maxv(arr){const v=(arr||[]).filter(x=>x!=null&&!Number.isNaN(x));return v.length?Math.max(...v):null;}
 function mode(arr){const v=(arr||[]).filter(x=>x!=null);if(!v.length)return null;const m=new Map();v.forEach(x=>m.set(x,(m.get(x)||0)+1));return [...m.entries()].sort((a,b)=>b[1]-a[1])[0][0];}
-function windType(dir,spd){if(spd<12)return 'flojo';if(dir>=45&&dir<=135)return 'levante';if(dir>=200&&dir<=330)return 'poniente';return 'terral';}
+function windType(dir,spd){if(spd<12)return 'flojo';if(dir>=45&&dir<=135)return 'levante';if(dir>135&&dir<200)return 'sur';if(dir>=200&&dir<=330)return 'poniente';return 'terral';}
 function codeEstado(c){if(c===0)return{estado:'sol',estadoTxt:'despejado',ico:'☀️'};if(c<=3)return{estado:'variable',estadoTxt:'parcialmente nublado',ico:'⛅'};if(c<=48)return{estado:'nubes',estadoTxt:'nublado o niebla',ico:'☁️'};if(c<=67)return{estado:'nubes',estadoTxt:'lluvia',ico:'🌧️'};if(c<=82)return{estado:'nubes',estadoTxt:'chubascos',ico:'🌦️'};if(c<=99)return{estado:'nubes',estadoTxt:'tormenta',ico:'⛈️'};return{estado:'variable',estadoTxt:'variable',ico:'⛅'};}
 function dayLabel(iso,i){if(i===0)return 'Hoy';if(i===1)return 'Mañana';const d=new Date(iso);return ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'][d.getDay()];}
 
@@ -77,7 +77,7 @@ async function getJSON(url){
 
 // Equivalente servidor de fetchScenariosAt(lat,lng): devuelve {days, hourly}
 async function scenariosAt(lat,lng){
-  const u=`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m&hourly=temperature_2m,relative_humidity_2m,precipitation,precipitation_probability,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m&daily=weather_code,temperature_2m_max,temperature_2m_min,wind_speed_10m_max,wind_direction_10m_dominant,uv_index_max,sunrise,sunset&timezone=auto&forecast_days=${FORECAST_DAYS}&wind_speed_unit=kmh`;
+  const u=`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m&hourly=temperature_2m,relative_humidity_2m,precipitation,precipitation_probability,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m&daily=weather_code,temperature_2m_max,temperature_2m_min,wind_speed_10m_max,wind_gusts_10m_max,wind_direction_10m_dominant,uv_index_max,sunrise,sunset&timezone=auto&forecast_days=${FORECAST_DAYS}&wind_speed_unit=kmh`;
   const wx=await getJSON(u);
   let sst=23,marD=null,marH=null;
   try{
@@ -108,7 +108,7 @@ async function scenariosAt(lat,lng){
       estadoTxt:e.estadoTxt,
       viento:windType(dir,spd),
       fuerza:Math.round(spd),
-      rachas:Math.round(i===0?(cur.wind_gusts_10m??spd*1.3):spd*1.3),
+      rachas:Math.round(i===0?(cur.wind_gusts_10m??d.wind_gusts_10m_max?.[0]??spd*1.3):(d.wind_gusts_10m_max?.[i]??spd*1.3)),
       sale:(d.sunrise?.[i]||'T06:50').slice(11,16),
       pone:(d.sunset?.[i]||'T21:30').slice(11,16),
       uv:d.uv_index_max?Math.round(d.uv_index_max[i]):null,
