@@ -1,5 +1,12 @@
 name: Actualizar datos meteorológicos
 
+# v91.6 (Fase 0): añade ping opcional a healthchecks.io al final de cada ejecución.
+# Si el workflow deja de ejecutarse (cron de GitHub retrasado/saltado) o falla,
+# healthchecks.io te avisa por email. El resto del workflow es idéntico a v91.5.
+#
+# El cron interno se mantiene como RESPALDO; el disparador principal pasa a ser
+# cron-job.org llamando a workflow_dispatch (ver LEEME_PARCHE_V91_23_FASE0.md).
+
 on:
   workflow_dispatch:
   schedule:
@@ -103,4 +110,24 @@ jobs:
             fi
             git commit -m "Actualizar datos meteorológicos"
             git push origin main
+          fi
+
+      # v91.6: aviso a healthchecks.io. Es OPCIONAL: si no existe el secret
+      # HEALTHCHECK_URL, el paso no hace nada y el workflow sigue igual que antes.
+      - name: Ping a healthchecks.io (opcional)
+        if: ${{ always() }}
+        env:
+          HEALTHCHECK_URL: ${{ secrets.HEALTHCHECK_URL }}
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          if [ -z "$HEALTHCHECK_URL" ]; then
+            echo "Sin HEALTHCHECK_URL configurada; paso omitido."
+            exit 0
+          fi
+          if [ "$JOB_STATUS" = "success" ]; then
+            curl -fsS -m 10 --retry 3 "$HEALTHCHECK_URL" >/dev/null || true
+            echo "Ping de éxito enviado."
+          else
+            curl -fsS -m 10 --retry 3 "$HEALTHCHECK_URL/fail" >/dev/null || true
+            echo "Ping de fallo enviado."
           fi
