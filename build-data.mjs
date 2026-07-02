@@ -81,11 +81,22 @@ async function scenariosAt(lat,lng){
   const wx=await getJSON(u);
   let sst=23,marD=null,marH=null;
   try{
-    const mar=await getJSON(`https://marine-api.open-meteo.com/v1/marine?latitude=${lat}&longitude=${lng}&current=sea_surface_temperature&hourly=wave_height,wave_direction&daily=wave_height_max,wave_direction_dominant&timezone=auto&forecast_days=${FORECAST_DAYS}`);
+    const mar=await getJSON(`https://marine-api.open-meteo.com/v1/marine?latitude=${lat}&longitude=${lng}&current=sea_surface_temperature&hourly=wave_height,wave_direction,sea_level_height_msl&daily=wave_height_max,wave_direction_dominant&timezone=auto&forecast_days=${FORECAST_DAYS}`);
     if(mar.current&&mar.current.sea_surface_temperature!=null)sst=Math.round(mar.current.sea_surface_temperature);
     if(mar.daily)marD=mar.daily;
     if(mar.hourly)marH=mar.hourly;
   }catch(e){/* sin marine: se usa sst por defecto */}
+  // v91.29: marea aproximada — extremos diarios de sea_level_height_msl (dato contextual, no baremo).
+  const tidesByDate={};
+  if(marH&&Array.isArray(marH.time)&&Array.isArray(marH.sea_level_height_msl)){
+    const T=marH.time,L=marH.sea_level_height_msl;
+    for(let k=1;k<T.length-1;k++){
+      const v=L[k];if(v==null||L[k-1]==null||L[k+1]==null)continue;
+      const dd=String(T[k]).slice(0,10),hm=String(T[k]).slice(11,16);
+      if(v>=L[k-1]&&v>L[k+1]){(tidesByDate[dd]=tidesByDate[dd]||{ple:[],baj:[]}).ple.push(hm);}
+      else if(v<=L[k-1]&&v<L[k+1]){(tidesByDate[dd]=tidesByDate[dd]||{ple:[],baj:[]}).baj.push(hm);}
+    }
+  }
   const cur=wx.current||{},d=wx.daily||{},out=[];
   const wh=i=>marD&&marD.wave_height_max?marD.wave_height_max[i]:null;
   const wd=i=>marD&&marD.wave_direction_dominant?marD.wave_direction_dominant[i]:null;
@@ -112,6 +123,7 @@ async function scenariosAt(lat,lng){
       sale:(d.sunrise?.[i]||'T06:50').slice(11,16),
       pone:(d.sunset?.[i]||'T21:30').slice(11,16),
       uv:d.uv_index_max?Math.round(d.uv_index_max[i]):null,
+      marea:tidesByDate[dateStr]||null,  // v91.29: contextual
       parts:{
         morning:summarizePart(dateStr,8,15,wx.hourly||{},marH||{}),
         afternoon:summarizePart(dateStr,15,22,wx.hourly||{},marH||{})
