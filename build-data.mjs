@@ -75,6 +75,70 @@ async function getJSON(url){
   return r.json();
 }
 
+// ===== v91.8: Banderas y ocupación OFICIALES (Junta de Andalucía) — APAGADO hasta respuesta de licencia =====
+// Consulta de licencia enviada el 3 jul 2026 por el canal del Portal de Datos Abiertos (CC BY 4.0).
+// Para activar: JUNTA_OFICIAL=true. Fuente: servicio del visor Playas Seguras de Andalucía (IECA/ASEMA).
+const JUNTA_OFICIAL=false;
+// Mapeo nuestroId -> id Junta (generado y depurado 3 jul). EXCLUIDAS pendientes de id manual:
+// 10 Zapillo, 18 Genoveses, 19 Monsul, 20 Barronal, 28 Cala del Plomo, 30 Los Muertos, 34 Macenas, 35 Sombrerico, 43 Cocedores.
+// Para anadir una: clic en la playa en el visor -> DevTools Red -> copiar el numero de beach/get/{id} -> anadir linea aqui.
+const JUNTA_MAP={
+  '1':16541, // Playa de San Nicolás (610m)
+  '2':30311, // Playa Boca del Río (1933m)
+  '3':33952, // Playa Piedra del Moro (2134m)
+  '4':16210, // Poniente Almerimar beach (968m)
+  '5':16596, // Punta Entinas - Sabinar beach (1463m)
+  '6':16204, // Playa de Aguadulce (1129m)
+  '7':16431, // Playa de la Romanilla (779m)
+  '8':16384, // Playa de la Bajadilla (419m)
+  '9':33967, // Playa de San Miguel (432m)
+  '11':16487, // Playa de Nueva Almería (2034m)
+  '12':16297, // Costacabana beach (954m)
+  '13':16355, // El Toyo beach (627m)
+  '14':16539, // Playa de San Miguel de Cabo de Gata (1444m)
+  '15':16407, // La Fabriquilla beach (127m)
+  '16':16410, // La Garrofa beach (1326m)
+  '17':16538, // San José beach (337m)
+  '21':16260, // Cala Rajá (487m)
+  '22':16307, // Arco and el Esparto beaches (129m)
+  '23':16495, // Plage Peñón Blanco (203m)
+  '24':16511, // Playazo de Rodalquilar (2263m)
+  '25':16449, // Las Negras beach (1069m)
+  '26':16261, // Cala San Pedro (860m)
+  '27':16241, // Cala de Enmedio (507m)
+  '29':16206, // Aguamarga beach (427m)
+  '31':16461, // Playa de los Barquicos-Los Cocones (236m)
+  '32':30485, // Vista de los Ángeles beach (2066m)
+  '33':16477, // Playa Marina de la Torre (330m)
+  '36':33955, // Playa Pósito Garrucha (153m)
+  '37':16591, // El Playazo (1458m)
+  '38':30489, // Cala Verde (266m)
+  '41':16245, // Cala de la Tía Antonia (902m)
+};
+const JUNTA_FLAG={BAPLAVERDE:'verde',BAPLAAMARILLA:'amarilla',BAPLAROJA:'roja',BAPLANEGRA:'negra'};
+const JUNTA_OCU={OCUPLABAJA:'Baja',OCUPLAMEDBAJA:'Media-baja',OCUPLAMEDIA:'Media',OCUPLAMEDALTA:'Media-alta',OCUPLAALTA:'Alta'};
+async function fetchJuntaOficial(){
+  if(!JUNTA_OFICIAL)return {};
+  const out={};
+  for(const [ourId,jid] of Object.entries(JUNTA_MAP)){
+    try{
+      const r=await fetch('https://maps.andalucia.org/rest-turistico/rest/beach/get/'+jid,{headers:{'Accept-Language':'es','User-Agent':'playasdealmeria-datos/1.0 (+https://playasdealmeria.es)'}});
+      if(r.ok){
+        const j=await r.json();const p=(j&&j.payload)||{};const rec={};
+        const f=p.beach_flag&&p.beach_flag.code;if(f&&JUNTA_FLAG[f])rec.oflag=JUNTA_FLAG[f];
+        const o=p.beach_occupation;if(o&&o.code)rec.ocupacionOficial=JUNTA_OCU[o.code]||o.name||null;
+        if(p.beach_state&&p.beach_state.code)rec.abierta=(p.beach_state.code==='ESPLASABIERTA');
+        if(rec.oflag||rec.ocupacionOficial){rec.oflagSource='Junta de Andalucía · Catálogo General de Playas';out[ourId]=rec;}
+      }
+      await new Promise(res=>setTimeout(res,150)); // pausa respetuosa entre peticiones
+    }catch(e){/* sin dato oficial: la web usa la bandera orientativa */}
+  }
+  console.log('· Datos oficiales Junta: '+Object.keys(out).length+' playas');
+  return out;
+}
+const __OFI__=await fetchJuntaOficial();
+// ===== fin datos oficiales Junta =====
+
 // Equivalente servidor de fetchScenariosAt(lat,lng): devuelve {days, hourly}
 async function scenariosAt(lat,lng){
   const u=`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m&hourly=temperature_2m,relative_humidity_2m,precipitation,precipitation_probability,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m&daily=weather_code,temperature_2m_max,temperature_2m_min,wind_speed_10m_max,wind_gusts_10m_max,wind_direction_10m_dominant,uv_index_max,sunrise,sunset&timezone=auto&forecast_days=${FORECAST_DAYS}&wind_speed_unit=kmh`;
@@ -648,7 +712,7 @@ async function main(){
   const beaches={},air={};
   await mapLimit(catalog,CONCURRENCY,async b=>{
     const [sc,aq]=await Promise.all([scenariosAt(b.lat,b.lng),airAt(b.lat,b.lng)]);
-    beaches[b.id]=sc;
+    beaches[b.id]=Object.assign(sc,__OFI__[String(b.id)]||{}); // v91.8: oflag/ocupación oficiales si están activos
     air[b.id]=aq;
     process.stdout.write('.');
   });
