@@ -79,13 +79,21 @@ async function getJSON(url){
 // Consulta de licencia enviada el 3 jul 2026 por el canal del Portal de Datos Abiertos (CC BY 4.0).
 // Para activar: JUNTA_OFICIAL=true. Fuente: servicio del visor Playas Seguras de Andalucía (IECA/ASEMA).
 const JUNTA_OFICIAL=false;
-// Mapeo nuestroId -> id Junta (generado y depurado 3 jul). EXCLUIDAS pendientes de id manual:
-// 10 Zapillo, 18 Genoveses, 19 Monsul, 20 Barronal, 28 Cala del Plomo, 30 Los Muertos, 34 Macenas, 35 Sombrerico, 43 Cocedores.
-// Para anadir una: clic en la playa en el visor -> DevTools Red -> copiar el numero de beach/get/{id} -> anadir linea aqui.
+// Mapeo COMPLETO 40/40: generado el 3 jul y depurado/completado A MANO por el propietario el mismo día.
+// Nota: Mojácar Playa usa "Playa Descargador" como tramo representativo (no hay entrada única de Mojácar en el servicio).
 const JUNTA_MAP={
+  '10':16540, // Playa del Zapillo (id confirmado a mano 3 jul)
+  '18':16465, // Los Genoveses (a mano 3 jul)
+  '19':16247, // Playa del Mónsul (a mano 3 jul)
+  '20':16234, // Barronal (a mano 3 jul)
+  '28':16254, // Cala del Plomo (a mano 3 jul)
+  '30':16469, // Playa de los Muertos (a mano 3 jul)
+  '34':16286, // Playa de Macenas (a mano 3 jul)
+  '35':16354, // El Sombrerico (a mano 3 jul)
+  '43':16236, // Los Cocedores (a mano 3 jul)
   '1':16541, // Playa de San Nicolás (610m)
-  '2':30311, // Playa Boca del Río (1933m)
-  '3':33952, // Playa Piedra del Moro (2134m)
+  '2':16226, // Playa de Balanegra (corregida a mano 3 jul)
+  '3':16460, // Balerma - Guardias Viejas (corregida a mano 3 jul)
   '4':16210, // Poniente Almerimar beach (968m)
   '5':16596, // Punta Entinas - Sabinar beach (1463m)
   '6':16204, // Playa de Aguadulce (1129m)
@@ -108,7 +116,7 @@ const JUNTA_MAP={
   '27':16241, // Cala de Enmedio (507m)
   '29':16206, // Aguamarga beach (427m)
   '31':16461, // Playa de los Barquicos-Los Cocones (236m)
-  '32':30485, // Vista de los Ángeles beach (2066m)
+  '32':16329, // Playa Descargador — tramo central de Mojácar Playa (elegida a mano 3 jul)
   '33':16477, // Playa Marina de la Torre (330m)
   '36':33955, // Playa Pósito Garrucha (153m)
   '37':16591, // El Playazo (1458m)
