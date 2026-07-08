@@ -72,13 +72,16 @@ jobs:
           console.log('JSON OK');
           console.log('generated_at:', json.generated_at || json.updated_at || '(sin fecha)');
           console.log('aemet ok:', json.aemet_alerts && json.aemet_alerts.ok);
+          // v91.52: se buscan VALORES de secreto, no nombres de parámetro.
+          // "api_key=[redacted]" o un "eyJ" suelto ya no hacen fallar el job.
           const leaks = {
-            api_key: raw.includes('api_key='),
-            jwt: raw.includes('eyJ'),
-            http429: raw.includes('HTTP 429')
+            jwt: /eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/.test(raw),
+            api_key_value: /api[_-]?key["']?\s*[:=]\s*["']?(?!\[redacted\])[A-Za-z0-9._-]{12,}/i.test(raw)
           };
           console.log('security:', leaks);
-          if (leaks.api_key || leaks.jwt) {
+          const aemetOk = !!(json.aemet_alerts && json.aemet_alerts.ok);
+          if (!aemetOk) console.log('::warning::AEMET no disponible en esta ejecucion; se publican los avisos cacheados.');
+          if (leaks.jwt || leaks.api_key_value) {
             console.error('Se ha detectado posible contenido sensible en datos_playas.json');
             process.exit(1);
           }

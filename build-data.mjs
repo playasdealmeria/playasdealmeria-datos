@@ -320,10 +320,13 @@ function aggregateProvinceFromBeaches(beaches){
 
 
 function sanitizeURLForLog(url){
-  return String(url||'')
-    .replace(/([?&]api_key=)[^&\s"']+/gi,'$1[redacted]')
-    .replace(/([?&]apikey=)[^&\s"']+/gi,'$1[redacted]')
-    .replace(/([?&]key=)[^&\s"']+/gi,'$1[redacted]');
+  // v91.52: se recorta la query COMPLETA, no solo el valor de la clave.
+  // Dejar el literal "api_key=[redacted]" en los mensajes de error hacía saltar
+  // el escáner de secretos del workflow (falso positivo).
+  return String(url||'').replace(/https?:\/\/[^\s"'<>]+/gi, m => {
+    const i = m.indexOf('?');
+    return i >= 0 ? m.slice(0, i) : m;
+  });
 }
 function sanitizeErrorMessage(msg){
   return sanitizeURLForLog(String(msg||''))
@@ -371,10 +374,21 @@ async function getText(url){
   if(!r.ok)throw new Error('HTTP '+r.status+' '+sanitizeURLForLog(url));
   return await r.text();
 }
-async function getAemetJSON(url){
-  const r=await fetch(url,{headers:{'user-agent':'playasdealmeria.es datos/1.0','accept':'application/json'}});
-  if(!r.ok)throw new Error('HTTP '+r.status+' '+sanitizeURLForLog(url));
-  return await r.json();
+async function getAemetJSON(url, tries = 3){
+  // v91.52: AEMET OpenData devuelve 429 de forma esporádica. Reintentamos con
+  // espera creciente antes de rendirnos y caer al caché de avisos.
+  const waits = [3000, 10000];
+  let last = 0;
+  for (let i = 0; i < tries; i++){
+    const r = await fetch(url,{headers:{'user-agent':'playasdealmeria.es datos/1.0','accept':'application/json'}});
+    if (r.ok) return await r.json();
+    last = r.status;
+    const retriable = r.status === 429 || r.status >= 500;
+    if (!retriable || i === tries - 1) break;
+    console.warn(`  ! AEMET HTTP ${r.status}; reintento ${i+1}/${tries-1} en ${waits[i]/1000}s`);
+    await new Promise(res => setTimeout(res, waits[i]));
+  }
+  throw new Error('HTTP '+last+' '+sanitizeURLForLog(url));
 }
 async function getBinary(url){
   const r=await fetch(url,{headers:{'user-agent':'playasdealmeria.es datos/1.0','accept':'application/xml,text/xml,application/gzip,application/x-tar,*/*'}});
