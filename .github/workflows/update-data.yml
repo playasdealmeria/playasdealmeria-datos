@@ -38,6 +38,9 @@ jobs:
       # prefiere IPv4. Esto fuerza IPv4 en TODOS los pasos, incluida la regeneración
       # que hace el paso de push si el remoto ha avanzado.
       NODE_OPTIONS: --dns-result-order=ipv4first
+      # TEMPORAL: apagado mientras diagnosticamos. Cada run desperdiciaba 180 s.
+      # Volver a quitar esta línea (o poner "true") cuando el diagnóstico esté resuelto.
+      JUNTA_OFICIAL: "false"
       # Márgenes algo más anchos que en local: el runner está más lejos.
       # Solo penalizan cuando algo va mal; si responde en 226 ms, no se notan.
       JUNTA_TIMEOUT_MS: "10000"
@@ -71,29 +74,64 @@ jobs:
       - name: Comprobar sintaxis del generador
         run: node --check build-data.mjs
 
-      # ── TEMPORAL (v91.11) ──────────────────────────────────────────────────
-      # Una sola petición a la Junta, para saber POR QUÉ falla desde el runner.
-      # Nunca rompe el run. Cuando el problema esté resuelto y estable, bórralo.
+      # ── TEMPORAL (v91.11b) ─────────────────────────────────────────────────
+      # curl -4 responde en 0,1 s desde este mismo runner (http=200), pero el fetch
+      # de Node falla a los ~10,5 s = connectTimeout de undici. No es la red, ni la
+      # Junta, ni el DNS (no hay AAAA real: ::ffff: es IPv4 mapeada). Es Node.
+      # "fetch failed" es un mensaje vacío: el error real vive en e.cause.
       - name: Diagnóstico Junta
         continue-on-error: true
         run: |
-          echo "--- ¿tiene IPv6? ---"
-          getent ahostsv4 maps.andalucia.org || echo "sin registro A"
-          getent ahostsv6 maps.andalucia.org || echo "sin registro AAAA"
-          echo "--- curl forzando IPv4 ---"
-          curl -s -o /dev/null -4 --max-time 25 \
-            -w "http=%{http_code} conexion=%{time_connect}s total=%{time_total}s\n" \
-            https://maps.andalucia.org/rest-turistico/rest/beach/get/16204 || echo "IPv4 FALLA"
-          echo "--- curl forzando IPv6 ---"
-          curl -s -o /dev/null -6 --max-time 25 \
-            -w "http=%{http_code} conexion=%{time_connect}s total=%{time_total}s\n" \
-            https://maps.andalucia.org/rest-turistico/rest/beach/get/16204 || echo "IPv6 FALLA"
-          echo "--- node fetch, con la configuracion real del job ---"
-          node -e "
-            const t=Date.now();
-            fetch('https://maps.andalucia.org/rest-turistico/rest/beach/get/16204',{signal:AbortSignal.timeout(25000)})
-              .then(r=>console.log('OK http='+r.status+' en '+(Date.now()-t)+' ms'))
-              .catch(e=>console.log('FALLA: '+e.message+' tras '+(Date.now()-t)+' ms'));"
+          node - <<'NODE'
+          const dns = require('node:dns');
+          const net = require('node:net');
+          const https = require('node:https');
+          const URL_ = 'https://maps.andalucia.org/rest-turistico/rest/beach/get/16204';
+          const UA = 'playasdealmeria-datos/1.0 (+https://playasdealmeria.es; contacto: playasdealmeria.es@gmail.com)';
+
+          console.log('node', process.version, '| NODE_OPTIONS =', process.env.NODE_OPTIONS || '(vacio)');
+          console.log('dns default order:', dns.getDefaultResultOrder ? dns.getDefaultResultOrder() : '(n/d)');
+          console.log('autoSelectFamily:', net.getDefaultAutoSelectFamily ? net.getDefaultAutoSelectFamily() : '(n/d)');
+          console.log('');
+
+          function detalle(e){
+            const c = e && e.cause ? e.cause : null;
+            if (!c) return e && e.message;
+            const campos = ['name','message','code','errno','syscall','address','port'];
+            const o = {}; for (const k of campos) if (c[k] !== undefined) o[k] = c[k];
+            if (Array.isArray(c.errors)) o.errors = c.errors.map(x => ({code:x.code, address:x.address, port:x.port, message:x.message}));
+            return JSON.stringify(o);
+          }
+
+          async function prueba(nombre, fn){
+            const t = Date.now();
+            try { const r = await fn(); console.log('  OK   ' + nombre + ' -> http=' + r + ' en ' + (Date.now()-t) + ' ms'); }
+            catch (e) { console.log('  FALLA ' + nombre + ' tras ' + (Date.now()-t) + ' ms'); console.log('        ' + detalle(e)); }
+          }
+
+          const conFetch = () => fetch(URL_, {signal: AbortSignal.timeout(20000), headers:{'User-Agent': UA}}).then(r => r.status);
+          const conHttps = (family) => new Promise((res, rej) => {
+            const req = https.get(URL_, {family, timeout: 20000, headers:{'User-Agent': UA}}, r => { r.resume(); res(r.statusCode); });
+            req.on('timeout', () => { req.destroy(new Error('timeout')); });
+            req.on('error', rej);
+          });
+
+          (async () => {
+            console.log('A · fetch tal cual (lo que hace build-data.mjs hoy)');
+            await prueba('fetch', conFetch);
+
+            console.log('B · https.get forzando family:4 (lo que hace curl -4)');
+            await prueba('https family:4', () => conHttps(4));
+
+            console.log('C · fetch con autoSelectFamily DESACTIVADO');
+            if (net.setDefaultAutoSelectFamily) net.setDefaultAutoSelectFamily(false);
+            dns.setDefaultResultOrder('ipv4first');
+            await prueba('fetch sin happy-eyeballs', conFetch);
+
+            console.log('D · fetch otra vez, para descartar que fuera el primer intento');
+            await prueba('fetch (2o intento)', conFetch);
+          })();
+          NODE
       # ───────────────────────────────────────────────────────────────────────
 
       - name: Generar datos meteorológicos
