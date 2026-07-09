@@ -74,64 +74,63 @@ jobs:
       - name: Comprobar sintaxis del generador
         run: node --check build-data.mjs
 
-      # ── TEMPORAL (v91.11b) ─────────────────────────────────────────────────
-      # curl -4 responde en 0,1 s desde este mismo runner (http=200), pero el fetch
-      # de Node falla a los ~10,5 s = connectTimeout de undici. No es la red, ni la
-      # Junta, ni el DNS (no hay AAAA real: ::ffff: es IPv4 mapeada). Es Node.
-      # "fetch failed" es un mensaje vacío: el error real vive en e.cause.
+      # ── TEMPORAL (v91.11c) ─────────────────────────────────────────────────
+      # Estado: curl -4 conectó en 115 ms (run #392). Node falla SIEMPRE con
+      # UND_ERR_CONNECT_TIMEOUT, incluso https.get con family:4 (run #395).
+      # No es undici, no es happy-eyeballs, no es el DNS.
+      # Dos cosas que faltan por comprobar:
+      #   (1) ¿había proxy? curl lo respeta; el fetch de Node lo ignora.
+      #   (2) ¿este runner concreto llega? Cada run es una VM con IP distinta.
+      #       Por eso curl y Node se ALTERNAN aquí, en el mismo paso.
       - name: Diagnóstico Junta
         continue-on-error: true
         run: |
+          IP=217.12.19.133
+          URL=https://maps.andalucia.org/rest-turistico/rest/beach/get/16204
+
+          echo "=== 1 · ¿hay proxy en el entorno? ==="
+          env | grep -iE '^(http_proxy|https_proxy|no_proxy|HTTP_PROXY|HTTPS_PROXY|NO_PROXY)=' || echo "  (ninguno)"
+
+          echo ""
+          echo "=== 2 · TCP crudo desde el shell, por IP ==="
+          if timeout 8 bash -c "cat < /dev/null > /dev/tcp/$IP/443" 2>/dev/null; then
+            echo "  TCP 443 ABIERTO"
+          else
+            echo "  TCP 443 NO SE ABRE (timeout u error)"
+          fi
+
+          echo ""
+          echo "=== 3 · curl -4 (control) ==="
+          curl -s -o /dev/null -4 --max-time 15 \
+            -w "  http=%{http_code} conexion=%{time_connect}s total=%{time_total}s\n" $URL \
+            || echo "  curl FALLA"
+
+          echo ""
+          echo "=== 4 · node, en la misma maquina y el mismo segundo ==="
           node - <<'NODE'
-          const dns = require('node:dns');
-          const net = require('node:net');
-          const https = require('node:https');
-          const URL_ = 'https://maps.andalucia.org/rest-turistico/rest/beach/get/16204';
-          const UA = 'playasdealmeria-datos/1.0 (+https://playasdealmeria.es; contacto: playasdealmeria.es@gmail.com)';
+          const dns=require('node:dns'), https=require('node:https');
+          const HOST='maps.andalucia.org', IP='217.12.19.133';
+          const PATH='/rest-turistico/rest/beach/get/16204';
 
-          console.log('node', process.version, '| NODE_OPTIONS =', process.env.NODE_OPTIONS || '(vacio)');
-          console.log('dns default order:', dns.getDefaultResultOrder ? dns.getDefaultResultOrder() : '(n/d)');
-          console.log('autoSelectFamily:', net.getDefaultAutoSelectFamily ? net.getDefaultAutoSelectFamily() : '(n/d)');
-          console.log('');
+          dns.lookup(HOST,{all:true},(e,a)=>console.log('  dns.lookup ->', e?e.message:JSON.stringify(a)));
 
-          function detalle(e){
-            const c = e && e.cause ? e.cause : null;
-            if (!c) return e && e.message;
-            const campos = ['name','message','code','errno','syscall','address','port'];
-            const o = {}; for (const k of campos) if (c[k] !== undefined) o[k] = c[k];
-            if (Array.isArray(c.errors)) o.errors = c.errors.map(x => ({code:x.code, address:x.address, port:x.port, message:x.message}));
-            return JSON.stringify(o);
-          }
-
-          async function prueba(nombre, fn){
-            const t = Date.now();
-            try { const r = await fn(); console.log('  OK   ' + nombre + ' -> http=' + r + ' en ' + (Date.now()-t) + ' ms'); }
-            catch (e) { console.log('  FALLA ' + nombre + ' tras ' + (Date.now()-t) + ' ms'); console.log('        ' + detalle(e)); }
-          }
-
-          const conFetch = () => fetch(URL_, {signal: AbortSignal.timeout(20000), headers:{'User-Agent': UA}}).then(r => r.status);
-          const conHttps = (family) => new Promise((res, rej) => {
-            const req = https.get(URL_, {family, timeout: 20000, headers:{'User-Agent': UA}}, r => { r.resume(); res(r.statusCode); });
-            req.on('timeout', () => { req.destroy(new Error('timeout')); });
-            req.on('error', rej);
-          });
-
-          (async () => {
-            console.log('A · fetch tal cual (lo que hace build-data.mjs hoy)');
-            await prueba('fetch', conFetch);
-
-            console.log('B · https.get forzando family:4 (lo que hace curl -4)');
-            await prueba('https family:4', () => conHttps(4));
-
-            console.log('C · fetch con autoSelectFamily DESACTIVADO');
-            if (net.setDefaultAutoSelectFamily) net.setDefaultAutoSelectFamily(false);
-            dns.setDefaultResultOrder('ipv4first');
-            await prueba('fetch sin happy-eyeballs', conFetch);
-
-            console.log('D · fetch otra vez, para descartar que fuera el primer intento');
-            await prueba('fetch (2o intento)', conFetch);
-          })();
+          const t0=Date.now();
+          const req=https.get({host:IP, servername:HOST, path:PATH, headers:{Host:HOST}, timeout:12000},
+            r=>{r.resume(); console.log('  node https POR IP -> http='+r.statusCode+' en '+(Date.now()-t0)+' ms');});
+          req.on('timeout',()=>{console.log('  node https POR IP -> TIMEOUT tras '+(Date.now()-t0)+' ms'); req.destroy();});
+          req.on('error',e=>console.log('  node https POR IP -> '+e.code+' '+e.message+' tras '+(Date.now()-t0)+' ms'));
           NODE
+
+          echo ""
+          echo "=== 5 · curl otra vez, por si esto va y viene ==="
+          curl -s -o /dev/null -4 --max-time 15 \
+            -w "  http=%{http_code} conexion=%{time_connect}s total=%{time_total}s\n" $URL \
+            || echo "  curl FALLA"
+
+          echo ""
+          echo "=== 6 · openssl: ¿llega el saludo TLS? ==="
+          timeout 12 openssl s_client -connect $IP:443 -servername $HOST -brief </dev/null 2>&1 | head -6 \
+            || echo "  openssl FALLA / timeout"
       # ───────────────────────────────────────────────────────────────────────
 
       - name: Generar datos meteorológicos
