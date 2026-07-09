@@ -74,63 +74,86 @@ jobs:
       - name: Comprobar sintaxis del generador
         run: node --check build-data.mjs
 
-      # ── TEMPORAL (v91.11c) ─────────────────────────────────────────────────
-      # Estado: curl -4 conectó en 115 ms (run #392). Node falla SIEMPRE con
-      # UND_ERR_CONNECT_TIMEOUT, incluso https.get con family:4 (run #395).
-      # No es undici, no es happy-eyeballs, no es el DNS.
-      # Dos cosas que faltan por comprobar:
-      #   (1) ¿había proxy? curl lo respeta; el fetch de Node lo ignora.
-      #   (2) ¿este runner concreto llega? Cada run es una VM con IP distinta.
-      #       Por eso curl y Node se ALTERNAN aquí, en el mismo paso.
+      # ── TEMPORAL (v91.11d) · ÚLTIMO DIAGNÓSTICO ────────────────────────────
+      # Confirmado (run #396): sin proxy · TCP 443 abre desde bash · curl -4 da 200
+      # dos veces (92-287 ms) · openssl completa el TLS · Node, por IP, TIMEOUT + RST.
+      # No es red, ni DNS, ni undici. Queda UNA capa: el saludo TLS de Node.
+      # Esto separa TCP de TLS y prueba si TLS 1.2 lo desatasca.
       - name: Diagnóstico Junta
         continue-on-error: true
         run: |
           IP=217.12.19.133
-          URL=https://maps.andalucia.org/rest-turistico/rest/beach/get/16204
+          HOST=maps.andalucia.org
 
-          echo "=== 1 · ¿hay proxy en el entorno? ==="
-          env | grep -iE '^(http_proxy|https_proxy|no_proxy|HTTP_PROXY|HTTPS_PROXY|NO_PROXY)=' || echo "  (ninguno)"
-
-          echo ""
-          echo "=== 2 · TCP crudo desde el shell, por IP ==="
-          if timeout 8 bash -c "cat < /dev/null > /dev/tcp/$IP/443" 2>/dev/null; then
-            echo "  TCP 443 ABIERTO"
-          else
-            echo "  TCP 443 NO SE ABRE (timeout u error)"
-          fi
-
-          echo ""
-          echo "=== 3 · curl -4 (control) ==="
+          echo "=== 0 · control: curl sigue funcionando en ESTA vm ==="
           curl -s -o /dev/null -4 --max-time 15 \
-            -w "  http=%{http_code} conexion=%{time_connect}s total=%{time_total}s\n" $URL \
-            || echo "  curl FALLA"
+            -w "  http=%{http_code} conexion=%{time_connect}s total=%{time_total}s\n" \
+            https://$HOST/rest-turistico/rest/beach/get/16204 || echo "  curl FALLA"
 
           echo ""
-          echo "=== 4 · node, en la misma maquina y el mismo segundo ==="
+          echo "=== 0b · que version de TLS negocia openssl ==="
+          timeout 12 openssl s_client -connect $IP:443 -servername $HOST -brief </dev/null 2>&1 \
+            | grep -Ei 'protocol|cipher|verification' || echo "  openssl FALLA"
+
+          echo ""
           node - <<'NODE'
-          const dns=require('node:dns'), https=require('node:https');
-          const HOST='maps.andalucia.org', IP='217.12.19.133';
+          const net=require('node:net'), tls=require('node:tls'), https=require('node:https');
+          const IP='217.12.19.133', HOST='maps.andalucia.org';
           const PATH='/rest-turistico/rest/beach/get/16204';
 
-          dns.lookup(HOST,{all:true},(e,a)=>console.log('  dns.lookup ->', e?e.message:JSON.stringify(a)));
+          const t=()=>Date.now();
+          function paso(n,txt){console.log('\n'+n+' · '+txt);}
 
-          const t0=Date.now();
-          const req=https.get({host:IP, servername:HOST, path:PATH, headers:{Host:HOST}, timeout:12000},
-            r=>{r.resume(); console.log('  node https POR IP -> http='+r.statusCode+' en '+(Date.now()-t0)+' ms');});
-          req.on('timeout',()=>{console.log('  node https POR IP -> TIMEOUT tras '+(Date.now()-t0)+' ms'); req.destroy();});
-          req.on('error',e=>console.log('  node https POR IP -> '+e.code+' '+e.message+' tras '+(Date.now()-t0)+' ms'));
+          function tcp(){return new Promise(res=>{
+            const t0=t(); const s=net.connect({host:IP,port:443});
+            s.setTimeout(10000);
+            s.on('connect',()=>{console.log('  TCP conectado en '+(t()-t0)+' ms'); s.destroy(); res(true);});
+            s.on('timeout',()=>{console.log('  TCP TIMEOUT tras '+(t()-t0)+' ms'); s.destroy(); res(false);});
+            s.on('error',e=>{console.log('  TCP '+e.code+' tras '+(t()-t0)+' ms'); res(false);});
+          });}
+
+          function handshake(nombre,opts){return new Promise(res=>{
+            const t0=t();
+            const s=tls.connect(Object.assign({host:IP,port:443,servername:HOST},opts));
+            s.setTimeout(12000);
+            s.on('secureConnect',()=>{console.log('  '+nombre+' -> OK '+s.getProtocol()+' / '+(s.getCipher()||{}).name+' en '+(t()-t0)+' ms'); s.destroy(); res(true);});
+            s.on('timeout',()=>{console.log('  '+nombre+' -> TIMEOUT tras '+(t()-t0)+' ms'); s.destroy(); res(false);});
+            s.on('error',e=>{console.log('  '+nombre+' -> '+e.code+' '+e.message+' tras '+(t()-t0)+' ms'); res(false);});
+          });}
+
+          function get(nombre,opts){return new Promise(res=>{
+            const t0=t();
+            const r=https.get(Object.assign({host:IP,servername:HOST,path:PATH,headers:{Host:HOST},timeout:12000},opts),
+              x=>{x.resume(); console.log('  '+nombre+' -> http='+x.statusCode+' en '+(t()-t0)+' ms'); res(true);});
+            r.on('timeout',()=>{console.log('  '+nombre+' -> TIMEOUT tras '+(t()-t0)+' ms'); r.destroy(); res(false);});
+            r.on('error',e=>{console.log('  '+nombre+' -> '+e.code+' tras '+(t()-t0)+' ms'); res(false);});
+          });}
+
+          (async()=>{
+            paso('1','TCP puro, sin TLS');
+            await tcp();
+
+            paso('2','Handshake TLS con los ajustes por defecto de Node');
+            await handshake('tls por defecto', {});
+
+            paso('3','Handshake TLS forzando TLS 1.2 (el clasico con balanceadores viejos)');
+            await handshake('tls maxVersion 1.2', {maxVersion:'TLSv1.2', minVersion:'TLSv1.2'});
+
+            paso('4','Handshake TLS con la lista de cifrados de OpenSSL, no la de Node');
+            await handshake('tls ciphers DEFAULT', {ciphers:'DEFAULT@SECLEVEL=1'});
+
+            paso('5','https.get forzando TLS 1.2');
+            await get('https 1.2', {maxVersion:'TLSv1.2', minVersion:'TLSv1.2'});
+
+            paso('6','control final: ¿sigue viva la vm?');
+          })();
           NODE
 
           echo ""
-          echo "=== 5 · curl otra vez, por si esto va y viene ==="
+          echo "=== 7 · curl, por ultima vez ==="
           curl -s -o /dev/null -4 --max-time 15 \
-            -w "  http=%{http_code} conexion=%{time_connect}s total=%{time_total}s\n" $URL \
-            || echo "  curl FALLA"
-
-          echo ""
-          echo "=== 6 · openssl: ¿llega el saludo TLS? ==="
-          timeout 12 openssl s_client -connect $IP:443 -servername $HOST -brief </dev/null 2>&1 | head -6 \
-            || echo "  openssl FALLA / timeout"
+            -w "  http=%{http_code} total=%{time_total}s\n" \
+            https://$HOST/rest-turistico/rest/beach/get/16204 || echo "  curl FALLA"
       # ───────────────────────────────────────────────────────────────────────
 
       - name: Generar datos meteorológicos
