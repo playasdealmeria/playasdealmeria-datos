@@ -12,6 +12,7 @@
  */
 import { readFile, writeFile } from 'node:fs/promises';
 import { gunzipSync, unzipSync } from 'node:zlib';
+import https from 'node:https'; // v91.11 datos: TLS 1.2 para la Junta
 
 const FORECAST_DAYS = 7;
 const CONCURRENCY = 5;
@@ -143,12 +144,49 @@ const JUNTA_OCU={
   OCUPLAALTA:['Alta','alta'],
 };
 const juntaSleep=ms=>new Promise(r=>setTimeout(r,ms));
-async function juntaFetchOnce(url){
-  const ac=new AbortController();
-  const t=setTimeout(()=>ac.abort(),JUNTA_TIMEOUT_MS);
-  try{
-    return await fetch(url,{signal:ac.signal,headers:{'Accept':'application/json','Accept-Language':'es','User-Agent':JUNTA_UA}});
-  } finally { clearTimeout(t); }
+/* ===== v91.11 datos: TLS 1.2 para la Junta =====
+   Medido en el runner de GitHub (9 jul 2026), contra la MISMA IP y en el MISMO segundo:
+     TCP puro                  ✓ 88 ms
+     curl -4 / openssl (TLS13) ✓ http=200
+     node, TLS por defecto     ✗ TIMEOUT 12,1 s
+     node, TLS 1.2             ✓ http=200 en 413 ms
+   Node 24 manda un ClientHello grande (grupos post-cuánticos de OpenSSL); se parte en dos
+   segmentos TCP y un balanceador delante de la Junta descarta el segundo. Con TLS 1.2 el
+   saludo cabe en un segmento y pasa.
+   Solo se aplica a la Junta. AEMET y Open-Meteo siguen con fetch: no tienen el problema.
+   Si algún día arreglan el balanceador: JUNTA_TLS_MAX=TLSv1.3, sin tocar código. */
+const JUNTA_TLS_MAX = process.env.JUNTA_TLS_MAX || 'TLSv1.2';
+const juntaAgent = new https.Agent({
+  keepAlive: true,          // 40 peticiones seguidas al mismo host: se reaprovecha la conexión
+  maxSockets: 1,            // en serie, como hasta ahora: sin ráfagas contra un servicio público
+  minVersion: 'TLSv1.2',
+  maxVersion: JUNTA_TLS_MAX,
+});
+// Devuelve un objeto con la forma mínima de una Response: {ok, status, json()}.
+// Así el resto de fetchJuntaOficial() no cambia ni una línea.
+function juntaFetchOnce(url){
+  return new Promise((resolve,reject)=>{
+    const req=https.get(url,{
+      agent:juntaAgent,
+      timeout:JUNTA_TIMEOUT_MS,
+      headers:{'Accept':'application/json','Accept-Language':'es','User-Agent':JUNTA_UA}
+    },res=>{
+      const trozos=[];
+      res.on('data',c=>trozos.push(c));
+      res.on('end',()=>{
+        const cuerpo=Buffer.concat(trozos).toString('utf8');
+        resolve({
+          ok:res.statusCode>=200&&res.statusCode<300,
+          status:res.statusCode,
+          json:async()=>JSON.parse(cuerpo)
+        });
+      });
+      res.on('error',reject);
+    });
+    // 'timeout' es inactividad del socket: hay que destruirlo a mano o la promesa cuelga.
+    req.on('timeout',()=>{req.destroy(new Error('timeout tras '+JUNTA_TIMEOUT_MS+' ms'));});
+    req.on('error',reject);
+  });
 }
 // Un reintento con espera ante 429/5xx o error de red. Nunca más: si el servicio va mal, se cede el turno.
 async function juntaFetch(url){
@@ -171,6 +209,7 @@ async function fetchJuntaOficial(){
     license_note:'Reutilización autorizada citando la fuente (respuesta del IECA, ref. _7738, 9 jul 2026).',
     fetched_at:new Date().toISOString(),
     requested:0, count:0, count_flags:0, count_occupancy:0, // v91.10 datos: desglose banderas/ocupación
+    tls:JUNTA_TLS_MAX, // v91.11 datos: TLS 1.2 para la Junta: con TLS 1.3 el balanceador de la Junta descarta el ClientHello de Node
     ok:false, truncated:false, elapsed_ms:0, errors:[]
   };
   if(!JUNTA_OFICIAL){ console.log('· Datos oficiales Junta: DESACTIVADOS (JUNTA_OFICIAL=false)'); return {data:{},meta}; }
