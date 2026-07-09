@@ -30,6 +30,18 @@ jobs:
     env:
       AEMET_API_KEY: ${{ secrets.AEMET_API_KEY }}
       AEMET_OPENDATA_AREA: esp
+      # v91.11 · 9 jul 2026. Desde el runner de GitHub, TODAS las peticiones a
+      # maps.andalucia.org morían por timeout (elapsed_ms 120011, truncated:true,
+      # "This operation was aborted" x40). Desde un PC en España responden en ~226 ms.
+      # Node 18+ resuelve DNS en orden "verbatim": si hay registro AAAA y la ruta IPv6
+      # no funciona, se queda esperando hasta el abort. Los runners tienen IPv6; tu PC
+      # prefiere IPv4. Esto fuerza IPv4 en TODOS los pasos, incluida la regeneración
+      # que hace el paso de push si el remoto ha avanzado.
+      NODE_OPTIONS: --dns-result-order=ipv4first
+      # Márgenes algo más anchos que en local: el runner está más lejos.
+      # Solo penalizan cuando algo va mal; si responde en 226 ms, no se notan.
+      JUNTA_TIMEOUT_MS: "10000"
+      JUNTA_BUDGET_MS: "180000"
 
     steps:
       - name: Descargar repositorio
@@ -58,6 +70,31 @@ jobs:
 
       - name: Comprobar sintaxis del generador
         run: node --check build-data.mjs
+
+      # ── TEMPORAL (v91.11) ──────────────────────────────────────────────────
+      # Una sola petición a la Junta, para saber POR QUÉ falla desde el runner.
+      # Nunca rompe el run. Cuando el problema esté resuelto y estable, bórralo.
+      - name: Diagnóstico Junta
+        continue-on-error: true
+        run: |
+          echo "--- ¿tiene IPv6? ---"
+          getent ahostsv4 maps.andalucia.org || echo "sin registro A"
+          getent ahostsv6 maps.andalucia.org || echo "sin registro AAAA"
+          echo "--- curl forzando IPv4 ---"
+          curl -s -o /dev/null -4 --max-time 25 \
+            -w "http=%{http_code} conexion=%{time_connect}s total=%{time_total}s\n" \
+            https://maps.andalucia.org/rest-turistico/rest/beach/get/16204 || echo "IPv4 FALLA"
+          echo "--- curl forzando IPv6 ---"
+          curl -s -o /dev/null -6 --max-time 25 \
+            -w "http=%{http_code} conexion=%{time_connect}s total=%{time_total}s\n" \
+            https://maps.andalucia.org/rest-turistico/rest/beach/get/16204 || echo "IPv6 FALLA"
+          echo "--- node fetch, con la configuracion real del job ---"
+          node -e "
+            const t=Date.now();
+            fetch('https://maps.andalucia.org/rest-turistico/rest/beach/get/16204',{signal:AbortSignal.timeout(25000)})
+              .then(r=>console.log('OK http='+r.status+' en '+(Date.now()-t)+' ms'))
+              .catch(e=>console.log('FALLA: '+e.message+' tras '+(Date.now()-t)+' ms'));"
+      # ───────────────────────────────────────────────────────────────────────
 
       - name: Generar datos meteorológicos
         run: node build-data.mjs
