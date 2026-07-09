@@ -75,10 +75,20 @@ async function getJSON(url){
   return r.json();
 }
 
-// ===== v91.8: Banderas y ocupación OFICIALES (Junta de Andalucía) — APAGADO hasta respuesta de licencia =====
-// Consulta de licencia enviada el 3 jul 2026 por el canal del Portal de Datos Abiertos (CC BY 4.0).
-// Para activar: JUNTA_OFICIAL=true. Fuente: servicio del visor Playas Seguras de Andalucía (IECA/ASEMA).
-const JUNTA_OFICIAL=false;
+// ===== v91.9 datos: banderas y ocupación OFICIALES (Junta de Andalucía) — ACTIVO desde 9 jul 2026 =====
+// Autorización: el IECA (ref. _7738) traslada que andalucia.org, fuente del dato, no pone
+// inconveniente a la reutilización siempre que se cite la fuente. Guardar ese correo.
+// Uso declarado por escrito a andalucia.org: ~40 playas cada 30 min (~80 peticiones/hora),
+// con caché, User-Agent identificado y espera ante 429/5xx.
+// APAGADO DE EMERGENCIA SIN DEPLOY: definir JUNTA_OFICIAL=false en el workflow.
+const JUNTA_OFICIAL   = String(process.env.JUNTA_OFICIAL ?? 'true').toLowerCase() !== 'false';
+const JUNTA_BASE      = process.env.JUNTA_BASE || 'https://maps.andalucia.org/rest-turistico/rest/beach/get/';
+const JUNTA_PAUSE_MS  = Math.max(0, Number(process.env.JUNTA_PAUSE_MS || 150));
+const JUNTA_TIMEOUT_MS= Math.max(1000, Number(process.env.JUNTA_TIMEOUT_MS || 6000));
+const JUNTA_BUDGET_MS = Math.max(10000, Number(process.env.JUNTA_BUDGET_MS || 120000));
+const JUNTA_UA        = process.env.JUNTA_UA || 'playasdealmeria-datos/1.0 (+https://playasdealmeria.es; contacto: playasdealmeria.es@gmail.com)';
+const JUNTA_ATTR      = 'Junta de Andalucía · andalucia.org';
+const JUNTA_URL_PUB   = 'https://www.andalucia.org/';
 // Mapeo COMPLETO 40/40: generado el 3 jul y depurado/completado A MANO por el propietario el mismo día.
 // Nota: Mojácar Playa usa "Playa Descargador" como tramo representativo (no hay entrada única de Mojácar en el servicio).
 const JUNTA_MAP={
@@ -124,27 +134,97 @@ const JUNTA_MAP={
   '41':16245, // Cala de la Tía Antonia (902m)
 };
 const JUNTA_FLAG={BAPLAVERDE:'verde',BAPLAAMARILLA:'amarilla',BAPLAROJA:'roja',BAPLANEGRA:'negra'};
-const JUNTA_OCU={OCUPLABAJA:'Baja',OCUPLAMEDBAJA:'Media-baja',OCUPLAMEDIA:'Media',OCUPLAMEDALTA:'Media-alta',OCUPLAALTA:'Alta'};
-async function fetchJuntaOficial(){
-  if(!JUNTA_OFICIAL)return {};
-  const out={};
-  for(const [ourId,jid] of Object.entries(JUNTA_MAP)){
+// [label ES, código estable]. El código viaja al JSON para que la web traduzca sin comparar cadenas.
+const JUNTA_OCU={
+  OCUPLABAJA:['Baja','baja'],
+  OCUPLAMEDBAJA:['Media-baja','media_baja'],
+  OCUPLAMEDIA:['Media','media'],
+  OCUPLAMEDALTA:['Media-alta','media_alta'],
+  OCUPLAALTA:['Alta','alta'],
+};
+const juntaSleep=ms=>new Promise(r=>setTimeout(r,ms));
+async function juntaFetchOnce(url){
+  const ac=new AbortController();
+  const t=setTimeout(()=>ac.abort(),JUNTA_TIMEOUT_MS);
+  try{
+    return await fetch(url,{signal:ac.signal,headers:{'Accept':'application/json','Accept-Language':'es','User-Agent':JUNTA_UA}});
+  } finally { clearTimeout(t); }
+}
+// Un reintento con espera ante 429/5xx o error de red. Nunca más: si el servicio va mal, se cede el turno.
+async function juntaFetch(url){
+  let last=null;
+  for(let i=0;i<2;i++){
     try{
-      const r=await fetch('https://maps.andalucia.org/rest-turistico/rest/beach/get/'+jid,{headers:{'Accept-Language':'es','User-Agent':'playasdealmeria-datos/1.0 (+https://playasdealmeria.es)'}});
+      const r=await juntaFetchOnce(url);
+      if((r.status===429||r.status>=500)&&i===0){await juntaSleep(3000);continue;}
+      return r;
+    }catch(e){ last=e; if(i===0){await juntaSleep(3000);continue;} }
+  }
+  throw last||new Error('juntaFetch agotado');
+}
+async function fetchJuntaOficial(){
+  const meta={
+    enabled:JUNTA_OFICIAL,
+    source:'Catálogo General de Playas de Andalucía · visor "Playas Seguras de Andalucía"',
+    attribution:JUNTA_ATTR,
+    url:JUNTA_URL_PUB,
+    license_note:'Reutilización autorizada citando la fuente (respuesta del IECA, ref. _7738, 9 jul 2026).',
+    fetched_at:new Date().toISOString(),
+    requested:0, count:0, count_flags:0, count_occupancy:0, // v91.10 datos: desglose banderas/ocupación
+    ok:false, truncated:false, elapsed_ms:0, errors:[]
+  };
+  if(!JUNTA_OFICIAL){ console.log('· Datos oficiales Junta: DESACTIVADOS (JUNTA_OFICIAL=false)'); return {data:{},meta}; }
+  const out={};
+  const t0=Date.now();
+  const entries=Object.entries(JUNTA_MAP);
+  meta.requested=entries.length;
+  for(const [ourId,jid] of entries){
+    if(Date.now()-t0>JUNTA_BUDGET_MS){ meta.truncated=true; break; }
+    try{
+      const r=await juntaFetch(JUNTA_BASE+jid);
       if(r.ok){
         const j=await r.json();const p=(j&&j.payload)||{};const rec={};
         const f=p.beach_flag&&p.beach_flag.code;if(f&&JUNTA_FLAG[f])rec.oflag=JUNTA_FLAG[f];
-        const o=p.beach_occupation;if(o&&o.code)rec.ocupacionOficial=JUNTA_OCU[o.code]||o.name||null;
+        const o=p.beach_occupation;
+        if(o&&o.code){
+          const pair=JUNTA_OCU[o.code];
+          if(pair){ rec.ocupacionOficial=pair[0]; rec.ocupacionCode=pair[1]; }
+          else if(o.name){ rec.ocupacionOficial=o.name; rec.ocupacionCode=null;
+            if(meta.errors.length<3)meta.errors.push('código de ocupación desconocido: '+o.code); }
+        }
         if(p.beach_state&&p.beach_state.code)rec.abierta=(p.beach_state.code==='ESPLASABIERTA');
-        if(rec.oflag||rec.ocupacionOficial){rec.oflagSource='Junta de Andalucía · Catálogo General de Playas';out[ourId]=rec;}
-      }
-      await new Promise(res=>setTimeout(res,150)); // pausa respetuosa entre peticiones
-    }catch(e){/* sin dato oficial: la web usa la bandera orientativa */}
+        if(rec.oflag||rec.ocupacionOficial){
+          rec.oflagSource=JUNTA_ATTR;
+          rec.ofiAt=new Date().toISOString(); // hora REAL de lectura, no la del build
+          out[ourId]=rec;
+        }
+      } else if(meta.errors.length<3){ meta.errors.push('HTTP '+r.status+' en playa '+ourId); }
+      await juntaSleep(JUNTA_PAUSE_MS); // pausa respetuosa entre peticiones
+    }catch(e){
+      if(meta.errors.length<3)meta.errors.push('playa '+ourId+': '+String(e&&e.message||e).slice(0,80));
+      // sin dato oficial para esta playa: la web usa la bandera orientativa
+    }
   }
-  console.log('· Datos oficiales Junta: '+Object.keys(out).length+' playas');
-  return out;
+  // v91.10 datos: desglose banderas/ocupación: 'count' es "playas con ALGO". Lo que de verdad interesa vigilar es cada cosa por su lado.
+  const __recs__=Object.values(out);
+  meta.count=__recs__.length;
+  meta.count_flags=__recs__.filter(r=>r.oflag).length;
+  meta.count_occupancy=__recs__.filter(r=>r.ocupacionOficial).length;
+  meta.elapsed_ms=Date.now()-t0;
+  meta.ok=meta.count>0 && !meta.truncated;
+  console.log('· Datos oficiales Junta: '+meta.count+'/'+meta.requested+' playas ('+meta.count_flags+' banderas · '+meta.count_occupancy+' ocupaciones) en '+meta.elapsed_ms+' ms'+(meta.truncated?' (presupuesto agotado)':''));
+  // Igual que AEMET: el run NO se pone rojo. Solo avisa. Si se repite varios días, mirar el servicio.
+  // Igual que AEMET: el run NO se pone rojo. Solo avisa.
+  // Ojo: NO se vigila 'count_flags' con un porcentaje. La cobertura de banderas de la Junta es
+  // irregular por diseño (hay playas que nunca la publican: el propio visor las pinta en gris).
+  // Lo que sí es anómalo es que NO haya ninguna: eso huele a cambio en el servicio.
+  if(meta.count_occupancy < Math.ceil(meta.requested*0.6)) console.log('::warning::Ocupación oficial incompleta ('+meta.count_occupancy+'/'+meta.requested+' playas).');
+  if(meta.count_flags===0 && meta.requested>0) console.log('::warning::CERO banderas oficiales en las '+meta.requested+' playas. ¿Ha cambiado el servicio de la Junta? La web mostrará bandera orientativa en todas.');
+  return {data:out,meta};
 }
-const __OFI__=await fetchJuntaOficial();
+const __OFI_RES__=await fetchJuntaOficial();
+const __OFI__=__OFI_RES__.data;
+const __OFI_META__=__OFI_RES__.meta;
 // ===== fin datos oficiales Junta =====
 
 // Equivalente servidor de fetchScenariosAt(lat,lng): devuelve {days, hourly}
@@ -754,13 +834,14 @@ async function main(){
     source:'Open-Meteo (forecast + marine + air-quality) + AEMET Meteoalerta',
     province,
     aemet_alerts,
+    official:__OFI_META__, // v91.9: atribución obligatoria + salud del servicio de la Junta
     beaches,
     air
   };
   await writeFile(new URL('./datos_playas.json',import.meta.url),JSON.stringify(out));
   const okBeaches=Object.keys(beaches).length;
   const okAir=Object.values(air).filter(a=>!a.error).length;
-  console.log(`OK · ${okBeaches} playas con clima/mar · ${okAir} con calidad del aire · resumen costa ${province?'sí':'no'} · avisos AEMET ${aemet_alerts.items.length}`);
+  console.log(`OK · ${okBeaches} playas con clima/mar · ${okAir} con calidad del aire · resumen costa ${province?'sí':'no'} · avisos AEMET ${aemet_alerts.items.length} · oficiales Junta ${__OFI_META__.count_flags} banderas / ${__OFI_META__.count_occupancy} ocupaciones (de ${__OFI_META__.requested})`);
 }
 
 main().catch(e=>{console.error('ERROR:',e);process.exit(1)});
