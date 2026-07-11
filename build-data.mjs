@@ -40,6 +40,7 @@ const AEMET_OPENDATA_AREAS = String(process.env.AEMET_OPENDATA_AREA||'esp').spli
 // v91.3 datos: AEMET se cachea internamente para evitar rate-limit.
 // El workflow puede seguir actualizando tiempo/mar cada hora, pero OpenData no se golpea en cada ejecución.
 const AEMET_CACHE_HOURS = Math.max(1, Number(process.env.AEMET_CACHE_HOURS||3));
+const AEMET_FAIL_CACHE_MINUTES = Math.max(0, Number(process.env.AEMET_FAIL_CACHE_MINUTES||25)); // datos v91.10: TTL corto para registros FALLIDOS
 const AEMET_COASTAL_ZONE_CODES = new Set(Object.keys(AEMET_ZONE_CODES));
 
 
@@ -475,7 +476,14 @@ function aemetAgeMinutes(a){
 }
 function shouldReuseAemet(a){
   const age=aemetAgeMinutes(a);
-  return Number.isFinite(age) && age <= AEMET_CACHE_HOURS*60;
+  if(!Number.isFinite(age))return false;
+  // datos v91.10: la caché larga (AEMET_CACHE_HOURS) es solo para ÉXITOS (anti
+  // rate-limit: no reconsultar lo que ya tienes). Un registro FALLIDO (ok:false)
+  // se reutiliza como mucho AEMET_FAIL_CACHE_MINUTES: cachear un fallo 3 h
+  // retrasaba la recuperación y la verificación de arreglos (visto el 11 jul
+  // con el TLS de AEMET: el run de las 21:35 ni intentó la llamada).
+  const maxMin=(a&&a.ok===true)?AEMET_CACHE_HOURS*60:AEMET_FAIL_CACHE_MINUTES;
+  return age <= maxMin;
 }
 async function readPreviousAemet(){
   try{
