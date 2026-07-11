@@ -493,14 +493,62 @@ async function getText(url){
   if(!r.ok)throw new Error('HTTP '+r.status+' '+sanitizeURLForLog(url));
   return await r.text();
 }
+/* ===== datos v91.9 · AEMET OpenData por node:https con TLS<=1.2 =====
+   Sintoma: "OpenData: fetch failed" cronico tras migrar el repo a Node 24.
+   Causa: el ClientHello del fetch de undici (Node 24) no completa el handshake
+   con el terminador TLS de opendata.aemet.es — el MISMO mal que el balanceador
+   de la Junta (v91.11 datos). Remedio identico: agente https con TLS 1.2.
+   Sin Accept-Encoding: la respuesta llega sin comprimir (el .tar.gz de env.datos
+   es formato de CONTENIDO y lo decodifica decodeAemetPayload, no transporte).
+   Sigue redirecciones (max 3): https.get no las sigue solo y fetch si lo hacia. */
+const AEMET_TIMEOUT_MS = 20000;
+const aemetAgent = new https.Agent({
+  keepAlive: true,
+  maxSockets: 1,
+  minVersion: 'TLSv1.2',
+  maxVersion: 'TLSv1.2',
+});
+function aemetGetRaw(url, accept, depth){
+  depth = depth || 0;
+  return new Promise((resolve,reject)=>{
+    const req=https.get(url,{
+      agent:aemetAgent,
+      timeout:AEMET_TIMEOUT_MS,
+      headers:{'user-agent':'playasdealmeria.es datos/1.0','accept':accept||'*/*'}
+    },res=>{
+      const loc=res.headers.location;
+      if(res.statusCode>=300&&res.statusCode<400&&loc&&depth<3){
+        res.resume();
+        resolve(aemetGetRaw(new URL(loc,url).toString(),accept,depth+1));
+        return;
+      }
+      const trozos=[];
+      res.on('data',c=>trozos.push(c));
+      res.on('end',()=>{
+        resolve({
+          ok:res.statusCode>=200&&res.statusCode<300,
+          status:res.statusCode,
+          buffer:Buffer.concat(trozos),
+          contentType:res.headers['content-type']||'',
+          contentEncoding:res.headers['content-encoding']||''
+        });
+      });
+      res.on('error',reject);
+    });
+    req.on('timeout',()=>{req.destroy(new Error('timeout tras '+AEMET_TIMEOUT_MS+' ms'));});
+    req.on('error',reject);
+  });
+}
 async function getAemetJSON(url, tries = 3){
   // v91.52: AEMET OpenData devuelve 429 de forma esporádica. Reintentamos con
   // espera creciente antes de rendirnos y caer al caché de avisos.
+  // datos v91.9: la petición va por aemetGetRaw (node:https, TLS<=1.2); el fetch
+  // de undici moría en el handshake con Node 24 ("fetch failed").
   const waits = [3000, 10000];
   let last = 0;
   for (let i = 0; i < tries; i++){
-    const r = await fetch(url,{headers:{'user-agent':'playasdealmeria.es datos/1.0','accept':'application/json'}});
-    if (r.ok) return await r.json();
+    const r = await aemetGetRaw(url,'application/json');
+    if (r.ok) return JSON.parse(r.buffer.toString('utf8'));
     last = r.status;
     const retriable = r.status === 429 || r.status >= 500;
     if (!retriable || i === tries - 1) break;
@@ -510,9 +558,9 @@ async function getAemetJSON(url, tries = 3){
   throw new Error('HTTP '+last+' '+sanitizeURLForLog(url));
 }
 async function getBinary(url){
-  const r=await fetch(url,{headers:{'user-agent':'playasdealmeria.es datos/1.0','accept':'application/xml,text/xml,application/gzip,application/x-tar,*/*'}});
+  const r=await aemetGetRaw(url,'application/xml,text/xml,application/gzip,application/x-tar,*/*'); // datos v91.9: TLS<=1.2, como getAemetJSON
   if(!r.ok)throw new Error('HTTP '+r.status+' '+sanitizeURLForLog(url));
-  return {buffer:Buffer.from(await r.arrayBuffer()),contentType:r.headers.get('content-type')||'',contentEncoding:r.headers.get('content-encoding')||''};
+  return {buffer:r.buffer,contentType:r.contentType,contentEncoding:r.contentEncoding};
 }
 function aemetDayFromURL(url){
   const u=String(url||'');
@@ -809,7 +857,7 @@ async function fetchAemetAlerts(previousAemet=null){
         warnings:[]
       };
     }catch(e){
-      errors.push('OpenData: '+sanitizeErrorMessage(e.message));
+      errors.push('OpenData: '+sanitizeErrorMessage(e.message+(e&&e.cause&&e.cause.message?' — causa: '+e.cause.message:''))); // datos v91.9: undici esconde el motivo real en e.cause
       warnings.push('Se usa fallback HTML porque AEMET OpenData ha fallado.');
     }
   }else{
