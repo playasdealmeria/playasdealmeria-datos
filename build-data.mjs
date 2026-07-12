@@ -209,7 +209,7 @@ async function fetchJuntaOficial(){
     url:JUNTA_URL_PUB,
     license_note:'Reutilización autorizada citando la fuente (respuesta del IECA, ref. _7738, 9 jul 2026).',
     fetched_at:new Date().toISOString(),
-    requested:0, count:0, count_flags:0, count_occupancy:0, // v91.10 datos: desglose banderas/ocupación
+    requested:0, count:0, count_flags:0, // datos v91.11: se retira el contador de ocupación (dato no mantenido por la fuente)
     tls:JUNTA_TLS_MAX, // v91.11 datos: TLS 1.2 para la Junta: con TLS 1.3 el balanceador de la Junta descarta el ClientHello de Node
     ok:false, truncated:false, elapsed_ms:0, errors:[]
   };
@@ -225,15 +225,15 @@ async function fetchJuntaOficial(){
       if(r.ok){
         const j=await r.json();const p=(j&&j.payload)||{};const rec={};
         const f=p.beach_flag&&p.beach_flag.code;if(f&&JUNTA_FLAG[f])rec.oflag=JUNTA_FLAG[f];
-        const o=p.beach_occupation;
-        if(o&&o.code){
-          const pair=JUNTA_OCU[o.code];
-          if(pair){ rec.ocupacionOficial=pair[0]; rec.ocupacionCode=pair[1]; }
-          else if(o.name){ rec.ocupacionOficial=o.name; rec.ocupacionCode=null;
-            if(meta.errors.length<3)meta.errors.push('código de ocupación desconocido: '+o.code); }
-        }
+        /* datos v91.11: RETIRADA la lectura del antiguo campo de ocupación de la Junta.
+           Veredicto del 13 jul sobre 368 commits/7 días: las 40 playas SIEMPRE en el mismo
+           valor ("media-baja"), 0 cambios, 0 intradía — con jid distintos y verificados por
+           playa, eso descarta un bug nuestro; es un dato que la fuente no mantiene en la
+           práctica (a diferencia de la bandera, que sí varía y es obligación del socorrismo).
+           Ver AUDITORIA/PENDIENTES. La web ya lo ignoraba (OCUPACION_VISIBLE=false); esto
+           solo deja de pedirlo y de escribirlo. */
         if(p.beach_state&&p.beach_state.code)rec.abierta=(p.beach_state.code==='ESPLASABIERTA');
-        if(rec.oflag||rec.ocupacionOficial){
+        if(rec.oflag){
           rec.oflagSource=JUNTA_ATTR;
           rec.ofiAt=new Date().toISOString(); // hora REAL de lectura, no la del build
           out[ourId]=rec;
@@ -249,16 +249,14 @@ async function fetchJuntaOficial(){
   const __recs__=Object.values(out);
   meta.count=__recs__.length;
   meta.count_flags=__recs__.filter(r=>r.oflag).length;
-  meta.count_occupancy=__recs__.filter(r=>r.ocupacionOficial).length;
   meta.elapsed_ms=Date.now()-t0;
   meta.ok=meta.count>0 && !meta.truncated;
-  console.log('· Datos oficiales Junta: '+meta.count+'/'+meta.requested+' playas ('+meta.count_flags+' banderas · '+meta.count_occupancy+' ocupaciones) en '+meta.elapsed_ms+' ms'+(meta.truncated?' (presupuesto agotado)':''));
+  console.log('· Datos oficiales Junta: '+meta.count+'/'+meta.requested+' playas ('+meta.count_flags+' banderas) en '+meta.elapsed_ms+' ms'+(meta.truncated?' (presupuesto agotado)':''));
   // Igual que AEMET: el run NO se pone rojo. Solo avisa. Si se repite varios días, mirar el servicio.
   // Igual que AEMET: el run NO se pone rojo. Solo avisa.
   // Ojo: NO se vigila 'count_flags' con un porcentaje. La cobertura de banderas de la Junta es
   // irregular por diseño (hay playas que nunca la publican: el propio visor las pinta en gris).
   // Lo que sí es anómalo es que NO haya ninguna: eso huele a cambio en el servicio.
-  if(meta.count_occupancy < Math.ceil(meta.requested*0.6)) console.log('::warning::Ocupación oficial incompleta ('+meta.count_occupancy+'/'+meta.requested+' playas).');
   if(meta.count_flags===0 && meta.requested>0) console.log('::warning::CERO banderas oficiales en las '+meta.requested+' playas. ¿Ha cambiado el servicio de la Junta? La web mostrará bandera orientativa en todas.');
   return {data:out,meta};
 }
@@ -936,7 +934,7 @@ async function main(){
   await writeFile(new URL('./datos_playas.json',import.meta.url),JSON.stringify(out));
   const okBeaches=Object.keys(beaches).length;
   const okAir=Object.values(air).filter(a=>!a.error).length;
-  console.log(`OK · ${okBeaches} playas con clima/mar · ${okAir} con calidad del aire · resumen costa ${province?'sí':'no'} · avisos AEMET ${aemet_alerts.items.length} · oficiales Junta ${__OFI_META__.count_flags} banderas / ${__OFI_META__.count_occupancy} ocupaciones (de ${__OFI_META__.requested})`);
+  console.log(`OK · ${okBeaches} playas con clima/mar · ${okAir} con calidad del aire · resumen costa ${province?'sí':'no'} · avisos AEMET ${aemet_alerts.items.length} · oficiales Junta ${__OFI_META__.count_flags} banderas (de ${__OFI_META__.requested})`);
 }
 
 main().catch(e=>{console.error('ERROR:',e);process.exit(1)});
