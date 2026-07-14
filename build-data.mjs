@@ -10,7 +10,7 @@
  * Replica fielmente la transformación que la app hace en fetchScenariosAt().
  * Ejecutar:  node build-data.mjs   (requiere Node 18+, fetch global)
  */
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile, writeFile, appendFile } from 'node:fs/promises';
 import { gunzipSync, unzipSync } from 'node:zlib';
 import https from 'node:https'; // v91.11 datos: TLS 1.2 para la Junta
 
@@ -899,6 +899,44 @@ async function fetchAemetAlerts(previousAemet=null){
   return sanitizeAemetRecord(result);
 }
 
+// ===== datos v91.12: ARCHIVO HISTÓRICO DE BANDERAS OFICIALES (verdad de campo para calibrar el baremo) =====
+// Cada ejecución, DURANTE horario de socorrismo (10-21 Madrid) y solo en playas con bandera OFICIAL,
+// añade una línea JSONL casando la bandera real con el tiempo de ESE momento (hora actual de la serie
+// horaria, con la dirección CRUDA del viento). Fichero mensual para acotar tamaño y el peso en git.
+// NO toca datos_playas.json. Fallo = no crítico (nunca tumba el build). Uso: analizar
+// «(viento,racha,dir,oleaje,exp) -> bandera que pusieron» y sustituir umbrales inventados por umbrales
+// medidos (empezando por el ajuste PROVISIONAL del viento flojo, web v91.106).
+function madridParts(){
+  const p=new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/Madrid',year:'numeric',month:'2-digit',hour:'2-digit',hour12:false}).formatToParts(new Date());
+  const g=t=>{const f=p.find(x=>x.type===t);return f?f.value:null;};
+  return {year:g('year'),month:g('month'),hour:Number(g('hour'))};
+}
+function currentHourWeather(bd){
+  const H=bd&&bd.hourly; if(!H||!Array.isArray(H.time)||!H.time.length) return {};
+  const {hour}=madridParts();
+  let best=-1,bestd=99;
+  for(let i=0;i<H.time.length;i++){const t=H.time[i]; if(t>=24)break; const d=Math.abs((t%24)-hour); if(d<bestd){bestd=d;best=i;}}
+  if(best<0)best=0; const i=best; const g=(a)=>a&&a[i]!=null?a[i]:null;
+  return {windK:g(H.wind),gustK:g(H.gust),windDir:g(H.wdir),waveH:g(H.wave),waveDir:g(H.waveDir),temp:g(H.temp),code:g(H.code)};
+}
+async function appendFlagHistory(beaches,catalog){
+  try{
+    const {year,month,hour}=madridParts();
+    if(hour<10||hour>=21){ console.log('· Histórico de banderas: fuera de 10-21, no se registra'); return; }
+    const expOf={}; for(const b of catalog) expOf[String(b.id)]=b.exp||null;
+    const ts=new Date().toISOString(); const lines=[];
+    for(const [id,bd] of Object.entries(beaches)){
+      if(!bd||!bd.oflag) continue;                       // solo verdad de campo (bandera oficial)
+      const w=currentHourWeather(bd);
+      lines.push(JSON.stringify({ts,id:Number(id),oflag:bd.oflag,abierta:(bd.abierta==null?null:bd.abierta),exp:(expOf[id]==null?null:expOf[id]),windK:(w.windK==null?null:w.windK),gustK:(w.gustK==null?null:w.gustK),windDir:(w.windDir==null?null:w.windDir),waveH:(w.waveH==null?null:w.waveH),waveDir:(w.waveDir==null?null:w.waveDir),temp:(w.temp==null?null:w.temp),code:(w.code==null?null:w.code)}));
+    }
+    if(!lines.length){ console.log('· Histórico de banderas: sin banderas oficiales que registrar'); return; }
+    const fname='banderas_historico_'+year+'-'+month+'.jsonl';
+    await appendFile(new URL('./'+fname,import.meta.url), lines.join('\n')+'\n');
+    console.log('· Histórico de banderas: +'+lines.length+' registros en '+fname);
+  }catch(e){ console.log('· Histórico de banderas: fallo no crítico ('+String(e&&e.message||e).slice(0,90)+')'); }
+}
+// ===== fin archivo histórico de banderas =====
 async function main(){
   const catalog=JSON.parse(await readFile(new URL('./playas_catalogo.json',import.meta.url),'utf8'));
   if(!Array.isArray(catalog)||!catalog.length)throw new Error('playas_catalogo.json vacío');
@@ -912,6 +950,8 @@ async function main(){
     process.stdout.write('.');
   });
   process.stdout.write('\n');
+
+  await appendFlagHistory(beaches,catalog); // datos v91.12: registrar (bandera oficial, tiempo real) para calibrar
 
   console.log('Generando resumen provincial…');
   // Resumen de portada: agregación real de las playas de la costa.
