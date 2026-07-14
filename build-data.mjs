@@ -64,9 +64,9 @@ function summarizePart(dateStr,startHour,endHour,wh,mh){
   const e=codeEstado(code==null?0:code);
   const spd=avg(idxs.map(i=>wh.wind_speed_10m?.[i]));
   const gust=maxv(idxs.map(i=>wh.wind_gusts_10m?.[i]));
-  const dir=avg(idxs.map(i=>wh.wind_direction_10m?.[i]));
+  const dir=meanDir(idxs.map(i=>wh.wind_direction_10m?.[i]));
   const waveH=avg(times.map(t=>marineByTime[t]?.waveH));
-  const waveDir=avg(times.map(t=>marineByTime[t]?.waveDir));
+  const waveDir=meanDir(times.map(t=>marineByTime[t]?.waveDir));
   const temp=avg(idxs.map(i=>wh.temperature_2m?.[i]));
   return {ico:e.ico,estadoTxt:e.estadoTxt,temp:temp!=null?Math.round(temp):null,windK:spd!=null?Math.round(spd):null,gustK:gust!=null?Math.round(gust):(spd!=null?Math.round(spd*1.3):null),windDir:dir!=null?Math.round(dir):null,waveH:waveH!=null?Math.round(waveH*10)/10:null,waveDir:waveDir!=null?Math.round(waveDir):null};
 }
@@ -358,6 +358,7 @@ async function mapLimit(arr,limit,fn){
 
 function validNum(x){return x!=null && !Number.isNaN(Number(x));}
 function roundAvg(vals){const v=(vals||[]).filter(validNum).map(Number);return v.length?Math.round(v.reduce((a,b)=>a+b,0)/v.length):null;}
+function meanDir(vals){const v=(vals||[]).filter(validNum).map(Number);if(!v.length)return null;let s=0,c=0;for(const d of v){const r=d*Math.PI/180;s+=Math.sin(r);c+=Math.cos(r);}if(Math.abs(s)<1e-9&&Math.abs(c)<1e-9)return null;const a=Math.round(Math.atan2(s,c)*180/Math.PI);return ((a%360)+360)%360;} // datos v91.13: media CIRCULAR de direcciones (0=360). La aritmetica rompia el terral (350-010 -> ~180 = sur).
 function roundMax(vals){const v=(vals||[]).filter(validNum).map(Number);return v.length?Math.round(Math.max(...v)):null;}
 function roundMin(vals){const v=(vals||[]).filter(validNum).map(Number);return v.length?Math.round(Math.min(...v)):null;}
 function common(vals,fallback=null){const v=(vals||[]).filter(x=>x!=null);if(!v.length)return fallback;const m=new Map();v.forEach(x=>m.set(String(x),(m.get(String(x))||0)+1));return [...m.entries()].sort((a,b)=>b[1]-a[1])[0][0];}
@@ -367,7 +368,7 @@ function aggregatePart(parts){
   const ico=common(src.map(x=>x.ico),'⛅');
   const estadoTxt=common(src.map(x=>x.estadoTxt),'variable');
   const windK=roundAvg(src.map(x=>x.windK));
-  const windDir=roundAvg(src.map(x=>x.windDir));
+  const windDir=meanDir(src.map(x=>x.windDir));
   return {
     ico,
     estadoTxt,
@@ -376,7 +377,7 @@ function aggregatePart(parts){
     gustK:roundMax(src.map(x=>x.gustK)),
     windDir,
     waveH:avg(src.map(x=>x.waveH))!=null?Math.round(avg(src.map(x=>x.waveH))*10)/10:null,
-    waveDir:roundAvg(src.map(x=>x.waveDir))
+    waveDir:meanDir(src.map(x=>x.waveDir))
   };
 }
 function aggregateHourly(allHourly){
@@ -393,8 +394,8 @@ function aggregateHourly(allHourly){
   [...by.keys()].sort((a,b)=>a-b).forEach(t=>{
     const g=by.get(t);out.time.push(t);
     out.temp.push(roundAvg(g.temp));out.rh.push(roundAvg(g.rh));out.pr.push(avg(g.pr)!=null?Math.round(avg(g.pr)*10)/10:0);out.pop.push(roundAvg(g.pop)||0);
-    out.code.push(Number(common(g.code,0)));out.wind.push(roundAvg(g.wind));out.gust.push(roundMax(g.gust));out.wdir.push(roundAvg(g.wdir));
-    out.wave.push(avg(g.wave)!=null?Math.round(avg(g.wave)*10)/10:null);out.waveDir.push(roundAvg(g.waveDir));
+    out.code.push(Number(common(g.code,0)));out.wind.push(roundAvg(g.wind));out.gust.push(roundMax(g.gust));out.wdir.push(meanDir(g.wdir));
+    out.wave.push(avg(g.wave)!=null?Math.round(avg(g.wave)*10)/10:null);out.waveDir.push(meanDir(g.waveDir));
   });
   return out;
 }
@@ -417,7 +418,7 @@ function aggregateProvinceFromBeaches(beaches){
       min:roundMin(list.map(x=>x.min)),
       agua:roundAvg(list.map(x=>x.agua)),
       waveH:avg(list.map(x=>x.waveH))!=null?Math.round(avg(list.map(x=>x.waveH))*10)/10:null,
-      waveDir:roundAvg(list.map(x=>x.waveDir)),
+      waveDir:meanDir(list.map(x=>x.waveDir)),
       estado:common(list.map(x=>x.estado),'variable'),
       estadoTxt:common(list.map(x=>x.estadoTxt),'variable'),
       viento,
