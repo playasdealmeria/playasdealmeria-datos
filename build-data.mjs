@@ -924,12 +924,12 @@ async function appendFlagHistory(beaches,catalog){
   try{
     const {year,month,hour}=madridParts();
     if(hour<10||hour>=21){ console.log('· Histórico de banderas: fuera de 10-21, no se registra'); return; }
-    const expOf={}; for(const b of catalog) expOf[String(b.id)]=b.exp||null;
+    /* datos v91.13b: ya NO se graba exp. Es un atributo MUTABLE (se corrigio en 15/40 el 15 jul) y no se denormaliza dentro de un log de solo-anadir: el registro lleva id, asi que exp se DERIVA al analizar uniendo con playas_catalogo.json. Asi este bug no puede repetirse. */
     const ts=new Date().toISOString(); const lines=[];
     for(const [id,bd] of Object.entries(beaches)){
       if(!bd||!bd.oflag) continue;                       // solo verdad de campo (bandera oficial)
       const w=currentHourWeather(bd);
-      lines.push(JSON.stringify({ts,id:Number(id),oflag:bd.oflag,abierta:(bd.abierta==null?null:bd.abierta),exp:(expOf[id]==null?null:expOf[id]),windK:(w.windK==null?null:w.windK),gustK:(w.gustK==null?null:w.gustK),windDir:(w.windDir==null?null:w.windDir),waveH:(w.waveH==null?null:w.waveH),waveDir:(w.waveDir==null?null:w.waveDir),temp:(w.temp==null?null:w.temp),code:(w.code==null?null:w.code)}));
+      lines.push(JSON.stringify({ts,id:Number(id),oflag:bd.oflag,abierta:(bd.abierta==null?null:bd.abierta),windK:(w.windK==null?null:w.windK),gustK:(w.gustK==null?null:w.gustK),windDir:(w.windDir==null?null:w.windDir),waveH:(w.waveH==null?null:w.waveH),waveDir:(w.waveDir==null?null:w.waveDir),temp:(w.temp==null?null:w.temp),code:(w.code==null?null:w.code)}));
     }
     if(!lines.length){ console.log('· Histórico de banderas: sin banderas oficiales que registrar'); return; }
     const fname='banderas_historico_'+year+'-'+month+'.jsonl';
