@@ -98,17 +98,23 @@ jobs:
           }
           NODE
 
+      - name: Validar rachas contra estación real (no crítico)
+        continue-on-error: true
+        run: node validar-rachas.mjs
+
       - name: Commit y push si hay cambios
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          if git diff --quiet datos_playas.json; then
-            echo "No hay cambios en datos_playas.json"
+          git add datos_playas.json
+          git add rachas_validacion_*.jsonl 2>/dev/null || true
+
+          if git diff --cached --quiet; then
+            echo "No hay cambios que commitear"
             exit 0
           fi
 
-          git add datos_playas.json
           git commit -m "Actualizar datos meteorológicos"
 
           # Si el remoto ha avanzado mientras se generaban los datos, reintentamos una vez.
@@ -117,7 +123,9 @@ jobs:
             git fetch origin main
             git reset --hard origin/main
             node build-data.mjs
+            node validar-rachas.mjs || true
             git add datos_playas.json
+            git add rachas_validacion_*.jsonl 2>/dev/null || true
             if git diff --cached --quiet; then
               echo "No hay cambios tras sincronizar"
               exit 0
