@@ -269,7 +269,7 @@ const __OFI_META__=__OFI_RES__.meta;
 async function scenariosAt(lat,lng){
   const u=`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m&hourly=temperature_2m,relative_humidity_2m,precipitation,precipitation_probability,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m&daily=weather_code,temperature_2m_max,temperature_2m_min,wind_speed_10m_max,wind_gusts_10m_max,wind_direction_10m_dominant,uv_index_max,sunrise,sunset&timezone=auto&forecast_days=${FORECAST_DAYS}&wind_speed_unit=kmh`;
   const wx=await getJSON(u);
-  let sst=23,marD=null,marH=null;
+  let sst=null,marD=null,marH=null; // datos v91.14-B: sin dato marino -> null (se arrastra el ultimo conocido en main)
   try{
     const mar=await getJSON(`https://marine-api.open-meteo.com/v1/marine?latitude=${lat}&longitude=${lng}&current=sea_surface_temperature&hourly=wave_height,wave_direction,sea_level_height_msl&daily=wave_height_max,wave_direction_dominant&timezone=auto&forecast_days=${FORECAST_DAYS}`);
     if(mar.current&&mar.current.sea_surface_temperature!=null)sst=Math.round(mar.current.sea_surface_temperature);
@@ -294,8 +294,8 @@ async function scenariosAt(lat,lng){
   for(let i=0;i<len;i++){
     const dateStr=d.time?.[i]||new Date(Date.now()+i*864e5).toISOString().slice(0,10);
     const e=codeEstado(i===0?(cur.weather_code??d.weather_code?.[0]):d.weather_code?.[i]);
-    const spd=i===0?(cur.wind_speed_10m??d.wind_speed_10m_max?.[0]??0):(d.wind_speed_10m_max?.[i]??0);
-    const dir=i===0?(cur.wind_direction_10m??d.wind_direction_10m_dominant?.[0]??0):(d.wind_direction_10m_dominant?.[i]??0);
+    const spd=d.wind_speed_10m_max?.[i]??(i===0?cur.wind_speed_10m:0)??0; // datos v91.14: dia 0 = max del dia (no la foto current)
+    const dir=d.wind_direction_10m_dominant?.[i]??(i===0?cur.wind_direction_10m:0)??0; // datos v91.14: dia 0 = dominante del dia
     out.push({
       key:i===0?'hoy':'d'+i,
       label:i===0?'Hoy':dayLabel(dateStr,i),
@@ -309,10 +309,10 @@ async function scenariosAt(lat,lng){
       estadoTxt:e.estadoTxt,
       viento:windType(dir,spd),
       fuerza:Math.round(spd),
-      rachas:Math.round(i===0?(cur.wind_gusts_10m??d.wind_gusts_10m_max?.[0]??spd*1.3):(d.wind_gusts_10m_max?.[i]??spd*1.3)),
-      sale:(d.sunrise?.[i]||'T06:50').slice(11,16),
-      pone:(d.sunset?.[i]||'T21:30').slice(11,16),
-      uv:d.uv_index_max?Math.round(d.uv_index_max[i]):null,
+      rachas:Math.round(d.wind_gusts_10m_max?.[i]??(i===0?cur.wind_gusts_10m:spd*1.3)??spd*1.3), // datos v91.14: dia 0 = max de 24h
+      sale:d.sunrise?.[i]?String(d.sunrise[i]).slice(11,16):'06:50', // datos v91.14-B: el literal viejo daba '' (slice fuera de rango)
+      pone:d.sunset?.[i]?String(d.sunset[i]).slice(11,16):'21:30', // datos v91.14-B
+      uv:d.uv_index_max?.[i]!=null?Math.round(d.uv_index_max[i]):null, // datos v91.14-B: guardaba el array, no el elemento (Math.round(null)=0)
       marea:tidesByDate[dateStr]||null,  // v91.29: contextual
       parts:{
         morning:summarizePart(dateStr,8,15,wx.hourly||{},marH||{}),
@@ -336,8 +336,8 @@ async function scenariosAt(lat,lng){
     hourly.wind.push(hr.wind_speed_10m?.[i]!=null?Math.round(hr.wind_speed_10m[i]):0);
     hourly.gust.push(hr.wind_gusts_10m?.[i]!=null?Math.round(hr.wind_gusts_10m[i]):null);
     hourly.wdir.push(hr.wind_direction_10m?.[i]!=null?Math.round(hr.wind_direction_10m[i]):0);
-    hourly.wave.push(marineByTime[t]?.waveH!=null?marineByTime[t].waveH:0);
-    hourly.waveDir.push(marineByTime[t]?.waveDir!=null?Math.round(marineByTime[t].waveDir):180);
+    hourly.wave.push(marineByTime[t]?.waveH??null); // datos v91.14-B: sin fabricar 0 m
+    hourly.waveDir.push(marineByTime[t]?.waveDir!=null?Math.round(marineByTime[t].waveDir):null); // datos v91.14-B: sin fabricar 180
   });
   return {days:out,hourly};
 }
@@ -938,15 +938,23 @@ async function appendFlagHistory(beaches,catalog){
   }catch(e){ console.log('· Histórico de banderas: fallo no crítico ('+String(e&&e.message||e).slice(0,90)+')'); }
 }
 // ===== fin archivo histórico de banderas =====
+async function readPrevBeaches(){ try{ const prev=JSON.parse(await readFile(new URL('./datos_playas.json',import.meta.url),'utf8')); return prev&&prev.beaches?prev.beaches:{}; }catch(e){ return {}; } } // datos v91.14-B
 async function main(){
   const catalog=JSON.parse(await readFile(new URL('./playas_catalogo.json',import.meta.url),'utf8'));
   if(!Array.isArray(catalog)||!catalog.length)throw new Error('playas_catalogo.json vacío');
   console.log('Generando datos para',catalog.length,'playas…');
 
+  const prevBeaches=await readPrevBeaches(); // datos v91.14-B: para arrastrar el último agua conocido
   const beaches={},air={};
   await mapLimit(catalog,CONCURRENCY,async b=>{
     const [sc,aq]=await Promise.all([scenariosAt(b.lat,b.lng),airAt(b.lat,b.lng)]);
     beaches[b.id]=Object.assign(sc,__OFI__[String(b.id)]||{}); // v91.8: oflag/ocupación oficiales si están activos
+    { const __bo=beaches[b.id]; // datos v91.14-B: arrastrar el último agua conocido si la Marine API falló
+      if(__bo&&Array.isArray(__bo.days)&&__bo.days.some(x=>x&&x.agua==null)){
+        const __pd=prevBeaches[b.id]&&Array.isArray(prevBeaches[b.id].days)?prevBeaches[b.id].days:null;
+        const __last=__pd?((__pd.find(x=>x&&x.agua!=null)||{}).agua):null;
+        __bo.days.forEach((day,di)=>{ if(day&&day.agua==null){ const pa=(__pd&&__pd[di]&&__pd[di].agua!=null)?__pd[di].agua:__last; if(pa!=null)day.agua=pa; } });
+      } }
     air[b.id]=aq;
     process.stdout.write('.');
   });
