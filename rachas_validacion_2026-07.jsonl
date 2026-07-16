@@ -53,3 +53,4 @@
 {"ts":"2026-07-16T14:05:54.856Z","hourLocal":"2026-07-16T16:00","om_wind":4,"om_gust":12,"om_ratio":3,"obs_wind":null,"obs_gust":null,"obs_ratio":null,"obs_fint":null,"gust_err":null,"note":"aemet: HTTP 429 https://opendata.aemet.es/opendata/api/observacion/convencional/datos/estacion/6325O?api_key=***"}
 {"ts":"2026-07-16T14:35:33.825Z","hourLocal":"2026-07-16T16:00","om_wind":4,"om_gust":12,"om_ratio":3,"obs_wind":11,"obs_gust":18,"obs_ratio":1.64,"obs_fint":"2026-07-16T14:00:00+0000","gust_err":-6}
 {"ts":"2026-07-16T15:05:34.552Z","hourLocal":"2026-07-16T17:00","om_wind":3,"om_gust":10,"om_ratio":3.33,"obs_wind":11,"obs_gust":18,"obs_ratio":1.64,"obs_fint":"2026-07-16T14:00:00+0000","gust_err":-8}
+{"ts":"2026-07-16T15:35:40.465Z","hourLocal":"2026-07-16T17:00","om_wind":3,"om_gust":10,"om_ratio":3.33,"obs_wind":13,"obs_gust":21,"obs_ratio":1.62,"obs_fint":"2026-07-16T15:00:00+0000","gust_err":-11}
