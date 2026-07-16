@@ -32,3 +32,4 @@
 {"ts":"2026-07-16T04:35:44.169Z","hourLocal":"2026-07-16T06:00","om_wind":4,"om_gust":7,"om_ratio":1.75,"obs_wind":12,"obs_gust":26,"obs_ratio":2.17,"obs_fint":"2026-07-16T04:00:00+0000","gust_err":-19}
 {"ts":"2026-07-16T05:05:35.381Z","hourLocal":"2026-07-16T07:00","om_wind":6,"om_gust":10,"om_ratio":1.67,"obs_wind":12,"obs_gust":26,"obs_ratio":2.17,"obs_fint":"2026-07-16T04:00:00+0000","gust_err":-16}
 {"ts":"2026-07-16T05:35:34.454Z","hourLocal":"2026-07-16T07:00","om_wind":6,"om_gust":10,"om_ratio":1.67,"obs_wind":5,"obs_gust":13,"obs_ratio":2.6,"obs_fint":"2026-07-16T05:00:00+0000","gust_err":-3}
+{"ts":"2026-07-16T06:05:29.861Z","hourLocal":"2026-07-16T08:00","om_wind":4,"om_gust":5,"om_ratio":1.25,"obs_wind":5,"obs_gust":13,"obs_ratio":2.6,"obs_fint":"2026-07-16T05:00:00+0000","gust_err":-8}
