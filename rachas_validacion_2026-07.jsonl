@@ -119,3 +119,4 @@
 {"ts":"2026-07-17T20:15:25.866Z","hourLocal":"2026-07-17T22:00","om_wind":3,"om_gust":7,"om_ratio":2.33,"obs_wind":12,"obs_gust":17,"obs_ratio":1.42,"obs_fint":"2026-07-17T19:00:00+0000","gust_err":-10}
 {"ts":"2026-07-17T20:35:31.497Z","hourLocal":"2026-07-17T22:00","om_wind":3,"om_gust":7,"om_ratio":2.33,"obs_wind":10,"obs_gust":15,"obs_ratio":1.5,"obs_fint":"2026-07-17T20:00:00+0000","gust_err":-8}
 {"ts":"2026-07-17T21:05:29.779Z","hourLocal":"2026-07-17T23:00","om_wind":3,"om_gust":7,"om_ratio":2.33,"obs_wind":10,"obs_gust":15,"obs_ratio":1.5,"obs_fint":"2026-07-17T20:00:00+0000","gust_err":-8}
+{"ts":"2026-07-17T21:35:31.670Z","hourLocal":"2026-07-17T23:00","om_wind":null,"om_gust":null,"om_ratio":null,"obs_wind":7,"obs_gust":17,"obs_ratio":2.43,"obs_fint":"2026-07-17T21:00:00+0000","gust_err":null,"note":"open-meteo: timeout"}
