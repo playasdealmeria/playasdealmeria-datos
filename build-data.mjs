@@ -110,7 +110,7 @@ const JUNTA_MAP={
   '5':16596, // Punta Entinas - Sabinar beach (1463m)
   '6':16204, // Playa de Aguadulce (1129m)
   '7':16431, // Playa de la Romanilla (779m)
-  '8':16384, // Playa de la Bajadilla (419m)
+  '8':16548, // Playa Serena / Urbanización de Roquetas (FIX 21jul: 16384 era 'Playa de la Bajadilla')
   '9':33967, // Playa de San Miguel (432m)
   '11':16487, // Playa de Nueva Almería (2034m)
   '12':16297, // Costacabana beach (954m)
@@ -132,8 +132,13 @@ const JUNTA_MAP={
   '33':16477, // Playa Marina de la Torre (330m)
   '36':33955, // Playa Pósito Garrucha (153m)
   '37':16591, // El Playazo (1458m)
-  '38':30489, // Cala Verde (266m)
+  '38':16512, // Playazo de Villaricos (FIX 21jul: 30489 era 'Cala Verde')
   '41':16245, // Cala de la Tía Antonia (902m)
+  '44':16451, // Las Salinas de Cabo de Gata (mapa 21jul)
+  '45':16340, // Playa del Palmer (mapa 21jul)
+  '47':16243, // Cala de la Media Luna (mapa 21jul)
+  '48':16232, // Cala Arena (mapa 21jul)
+  '49':16211, // Playa del Corralete (mapa 21jul)
 };
 const JUNTA_FLAG={BAPLAVERDE:'verde',BAPLAAMARILLA:'amarilla',BAPLAROJA:'roja',BAPLANEGRA:'negra'};
 // [label ES, código estable]. El código viaja al JSON para que la web traduzca sin comparar cadenas.
@@ -263,6 +268,89 @@ async function fetchJuntaOficial(){
 const __OFI_RES__=await fetchJuntaOficial();
 const __OFI__=__OFI_RES__.data;
 const __OFI_META__=__OFI_RES__.meta;
+// ===== El Ejido: banderas oficiales del Ayuntamiento (rellenan las que la Junta no publica) =====
+// El Ejido gestiona su propio socorrismo y publica la bandera diaria en su API pública
+// (elejido.es/playas/api). La Junta tiene estas playas en su catálogo pero NO recibe su bandera.
+// Dato público de una administración; se cita la fuente y se cachea. Kill-switch: EJIDO_OFICIAL=false.
+const EJIDO_OFICIAL = String(process.env.EJIDO_OFICIAL ?? 'true').toLowerCase() !== 'false';
+const EJIDO_URL     = process.env.EJIDO_URL || 'https://elejido.es/playas/api/?url=infoplayas';
+const EJIDO_ATTR    = 'Ayuntamiento de El Ejido';
+const EJIDO_TIMEOUT_MS = Math.max(1000, Number(process.env.EJIDO_TIMEOUT_MS || 6000));
+// nuestro_id <- [ids de El Ejido] (muchos-a-uno). Se toma la PEOR bandera entre las sub-playas.
+const EJIDO_MAP = { '3':[4,6,8], '4':[2,3] }; // 3 Balerma-Guardias Viejas <- Balerma(4)+Guardias(6)+Piedra del Moro(8) · 4 Almerimar <- Levante(2)+Poniente(3)
+const EJIDO_SEV = { verde:1, amarilla:2, roja:3, negra:4 };
+function ejidoNorm(s){ s=String(s||'').toLowerCase().trim(); if(s==='amarillo')s='amarilla'; if(s==='rojo')s='roja'; return s; }
+function ejidoWorse(a,b){ return (EJIDO_SEV[b]||0)>(EJIDO_SEV[a]||0)?b:a; }
+async function fetchEjidoOficial(){
+  const meta={enabled:EJIDO_OFICIAL, source:EJIDO_ATTR, requested:Object.keys(EJIDO_MAP).length, count:0, count_flags:0, elapsed_ms:0, errors:[]};
+  if(!EJIDO_OFICIAL){ console.log('· Datos oficiales El Ejido: DESACTIVADOS (EJIDO_OFICIAL=false)'); return {data:{},meta}; }
+  const t0=Date.now(); const out={};
+  try{
+    const ctrl=new AbortController(); const to=setTimeout(()=>ctrl.abort(), EJIDO_TIMEOUT_MS);
+    let arr;
+    try{ arr=await fetch(EJIDO_URL,{headers:{'User-Agent':JUNTA_UA,'Accept':'application/json'},signal:ctrl.signal}).then(r=>{if(!r.ok)throw new Error('HTTP '+r.status);return r.json();}); }
+    finally{ clearTimeout(to); }
+    if(!Array.isArray(arr)) throw new Error('respuesta no es un array');
+    const byId={}; for(const b of arr) byId[b.id]=b;
+    for(const [ourId,subIds] of Object.entries(EJIDO_MAP)){
+      let flag=null, upd=null;
+      for(const sid of subIds){
+        const sb=byId[sid]; if(!sb) continue;
+        const f=ejidoNorm(sb.bandera); if(!EJIDO_SEV[f]) continue;
+        flag = flag ? ejidoWorse(flag,f) : f;
+        if(sb.actualizado && (!upd || String(sb.actualizado)>upd)) upd=String(sb.actualizado);
+      }
+      if(flag){ out[ourId]={oflag:flag, oflagSource:EJIDO_ATTR, ofiAt:new Date().toISOString()}; meta.count++; meta.count_flags++; }
+    }
+  }catch(e){ meta.errors.push(String(e&&e.message||e).slice(0,120)); console.log('! El Ejido oficial: '+meta.errors[0]); }
+  meta.elapsed_ms=Date.now()-t0;
+  console.log('· Datos oficiales El Ejido: '+meta.count_flags+'/'+meta.requested+' playas con bandera en '+meta.elapsed_ms+' ms');
+  return {data:out, meta};
+}
+const __EJIDO_RES__=await fetchEjidoOficial();
+const __EJIDO__=__EJIDO_RES__.data;
+// CASCADA de fuentes oficiales MUNICIPALES, en orden de prioridad.
+// PRIORIDAD: el ayuntamiento manda en la BANDERA (es quien iza el socorrismo y suele ser más fresco);
+// la Junta queda de base y aporta la OCUPACIÓN. Si nadie da bandera → la app usa la estimada.
+// Extensible: añadir aquí Carboneras/Zenkra, Roquetas, etc. cuando estén listas (orden = prioridad).
+const __MUNI_OFI__=[__EJIDO__];
+// ===== Roquetas de Mar: banderas oficiales (la Junta NO las publica; su web sí) =====
+// Web municipal Drupal (módulo tic_proteccion_playas), renderizada en servidor. Cada playa es un
+// bloque id="tooltip_{slug}" con su bandera-{color}.png dentro. Dato público de administración; se
+// cita la fuente y se cachea (kill-switch ROQUETAS_OFICIAL=false). Sin hotlinkear imágenes.
+const ROQUETAS_OFICIAL = String(process.env.ROQUETAS_OFICIAL ?? 'true').toLowerCase() !== 'false';
+const ROQUETAS_URL = process.env.ROQUETAS_URL || 'https://roquetasdemar.es/tu-ayuntamiento/areas-municipales/turismo-y-playas/playas';
+const ROQUETAS_ATTR = 'Ayuntamiento de Roquetas de Mar';
+const ROQUETAS_TIMEOUT_MS = Math.max(1000, Number(process.env.ROQUETAS_TIMEOUT_MS || 6000));
+// nuestro_id <- [slugs de tooltip en la web de Roquetas] (muchos-a-uno, PEOR bandera).
+// #8 combina Playa Serena + Urbanización Roquetas. bajadilla/bajos/cerrillos/salinas no tienen ficha nuestra.
+const ROQUETAS_MAP = { '6':['aguadulce'], '7':['romanilla'], '8':['playa_serena','urbanizacion_roquetas'], '11':['ventilla'] };
+async function fetchRoquetasOficial(){
+  const meta={enabled:ROQUETAS_OFICIAL, source:ROQUETAS_ATTR, requested:Object.keys(ROQUETAS_MAP).length, count:0, count_flags:0, elapsed_ms:0, errors:[]};
+  if(!ROQUETAS_OFICIAL){ console.log('· Datos oficiales Roquetas: DESACTIVADOS (ROQUETAS_OFICIAL=false)'); return {data:{},meta}; }
+  const t0=Date.now(); const out={};
+  try{
+    const ctrl=new AbortController(); const to=setTimeout(()=>ctrl.abort(), ROQUETAS_TIMEOUT_MS);
+    let html;
+    try{ html=await fetch(ROQUETAS_URL,{headers:{'User-Agent':JUNTA_UA,'Accept':'text/html'},signal:ctrl.signal}).then(r=>{if(!r.ok)throw new Error('HTTP '+r.status);return r.text();}); }
+    finally{ clearTimeout(to); }
+    // bandera del bloque id="tooltip_{slug}", acotada hasta el siguiente tooltip (no contamina con leyenda ni vecinos)
+    const flagAt=slug=>{ const i=html.indexOf('id="tooltip_'+slug+'"'); if(i<0) return null; const j=html.indexOf('tooltip_', i+12); const seg=html.slice(i, j<0? i+1500 : j); const m=seg.match(/bandera-(verde|amarilla|roja|negra)/); return m?m[1]:null; };
+    for(const [ourId,slugs] of Object.entries(ROQUETAS_MAP)){
+      let flag=null;
+      for(const s of slugs){ const f=flagAt(s); if(!f||!EJIDO_SEV[f]) continue; flag=flag?ejidoWorse(flag,f):f; }
+      if(flag){ out[ourId]={oflag:flag, oflagSource:ROQUETAS_ATTR, ofiAt:new Date().toISOString()}; meta.count++; meta.count_flags++; }
+    }
+  }catch(e){ meta.errors.push(String(e&&e.message||e).slice(0,120)); console.log('! Roquetas oficial: '+meta.errors[0]); }
+  meta.elapsed_ms=Date.now()-t0;
+  console.log('· Datos oficiales Roquetas: '+meta.count_flags+'/'+meta.requested+' playas con bandera en '+meta.elapsed_ms+' ms');
+  return {data:out, meta};
+}
+const __ROQUETAS_RES__=await fetchRoquetasOficial();
+const __ROQUETAS__=__ROQUETAS_RES__.data;
+__MUNI_OFI__.push(__ROQUETAS__);
+
+
 // ===== fin datos oficiales Junta =====
 
 // Equivalente servidor de fetchScenariosAt(lat,lng): devuelve {days, hourly}
@@ -936,7 +1024,7 @@ async function main(){
   const beaches={},air={};
   await mapLimit(catalog,CONCURRENCY,async b=>{
     const [sc,aq]=await Promise.all([scenariosAt(b.lat,b.lng),airAt(b.lat,b.lng)]);
-    beaches[b.id]=Object.assign(sc,__OFI__[String(b.id)]||{}); // v91.8: oflag/ocupación oficiales si están activos
+    {const _id=String(b.id);const _off=Object.assign(sc,__OFI__[_id]||{});for(const _src of __MUNI_OFI__){const _m=_src[_id];if(_m&&_m.oflag){_off.oflag=_m.oflag;_off.oflagSource=_m.oflagSource;_off.ofiAt=_m.ofiAt;break;}}beaches[b.id]=_off;} // v91.8: oflag/ocupación oficiales si están activos
     { const __bo=beaches[b.id]; // datos v91.14-B: arrastrar el último agua conocido si la Marine API falló
       if(__bo&&Array.isArray(__bo.days)&&__bo.days.some(x=>x&&x.agua==null)){
         const __pd=prevBeaches[b.id]&&Array.isArray(prevBeaches[b.id].days)?prevBeaches[b.id].days:null;
