@@ -13,6 +13,8 @@
 import { readFile, writeFile, appendFile } from 'node:fs/promises';
 import { gunzipSync, unzipSync } from 'node:zlib';
 import https from 'node:https'; // v91.11 datos: TLS 1.2 para la Junta
+import { applyWindAnchor, fetchAnchorBias, ANCHOR_CFG } from './anclar-viento.mjs'; // parche a (email El Zapillo): ancla de observacion
+const __ANCHOR_ON=process.env.WIND_ANCHOR==='1'; let __ANCHOR_BIAS=null;
 
 const FORECAST_DAYS = 7;
 const CONCURRENCY = 5;
@@ -415,6 +417,7 @@ async function scenariosAt(lat,lng){
     hourly.wave.push(marineByTime[t]?.waveH??null); // datos v91.14-B: sin fabricar 0 m
     hourly.waveDir.push(marineByTime[t]?.waveDir!=null?Math.round(marineByTime[t].waveDir):null); // datos v91.14-B: sin fabricar 180
   });
+  if(__ANCHOR_ON&&__ANCHOR_BIAS){ try{ applyWindAnchor(hourly,__ANCHOR_BIAS,__ANCHOR_BIAS.nowHour,ANCHOR_CFG); }catch(e){} }
   return {days:out,hourly};
 }
 
@@ -1021,6 +1024,7 @@ async function main(){
   console.log('Generando datos para',catalog.length,'playas…');
 
   const prevBeaches=await readPrevBeaches(); // datos v91.14-B: para arrastrar el último agua conocido
+  if(__ANCHOR_ON){ try{ __ANCHOR_BIAS=await fetchAnchorBias(); if(__ANCHOR_BIAS) console.log('· ancla viento: obs '+__ANCHOR_BIAS.obs.wind+'/'+__ANCHOR_BIAS.obs.gust+' vs OM '+__ANCHOR_BIAS.om.wind+'/'+__ANCHOR_BIAS.om.gust+' -> nudge +'+__ANCHOR_BIAS.biasWind+'/'+__ANCHOR_BIAS.biasGust+' km/h (hoy, proximas '+ANCHOR_CFG.HOURS+'h)'); else console.log('· ancla viento: sin observacion, feed sin cambios'); }catch(e){ console.warn('· ancla viento no critica: '+e.message); } }
   const beaches={},air={};
   await mapLimit(catalog,CONCURRENCY,async b=>{
     const [sc,aq]=await Promise.all([scenariosAt(b.lat,b.lng),airAt(b.lat,b.lng)]);

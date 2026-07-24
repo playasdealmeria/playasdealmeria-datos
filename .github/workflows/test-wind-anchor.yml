@@ -1,0 +1,80 @@
+name: PRUEBA · ancla de viento (no toca main)
+
+# Ejecucion MANUAL para validar el ancla de viento (WIND_ANCHOR=1) contra datos reales.
+# NO hace commit ni toca produccion: genera datos_playas.json y lo sube como artefacto
+# junto con el log del ancla, para revisarlo antes de activarlo en la generacion horaria.
+# Cuando el resultado convenza, se activa poniendo WIND_ANCHOR: "1" en update-data.yml.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: prueba-ancla-viento
+  cancel-in-progress: true
+
+jobs:
+  test-anchor:
+    name: Generar feed con ancla y subir artefacto
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      AEMET_API_KEY: ${{ secrets.AEMET_API_KEY }}
+      AEMET_OPENDATA_AREA: esp
+      JUNTA_TIMEOUT_MS: "10000"
+      JUNTA_BUDGET_MS: "180000"
+      WIND_ANCHOR: "1"
+    steps:
+      - name: Descargar repositorio
+        uses: actions/checkout@v5
+
+      - name: Configurar Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+
+      - name: Validar secret AEMET
+        run: |
+          if [ -z "$AEMET_API_KEY" ]; then
+            echo "::error::Falta el secret AEMET_API_KEY en este repositorio"
+            exit 1
+          fi
+          echo "AEMET_API_KEY configurada"
+
+      - name: Comprobar sintaxis del generador
+        run: node --check build-data.mjs
+
+      - name: Generar datos CON ancla (WIND_ANCHOR=1)
+        run: |
+          set -o pipefail
+          node build-data.mjs 2>&1 | tee anclaje_log.txt
+
+      - name: Validar JSON generado
+        run: |
+          test -f datos_playas.json
+          node - <<'NODE'
+          const fs = require('fs');
+          const raw = fs.readFileSync('datos_playas.json','utf8');
+          const j = JSON.parse(raw);
+          console.log('JSON OK · generated_at:', j.generated_at || j.updated_at || '(sin fecha)');
+          console.log('aemet ok:', j.aemet_alerts && j.aemet_alerts.ok);
+          const leaks = {
+            jwt: /eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/.test(raw),
+            api_key_value: /api[_-]?key["']?\s*[:=]\s*["']?(?!\[redacted\])[A-Za-z0-9._-]{12,}/i.test(raw)
+          };
+          console.log('security:', leaks);
+          if (leaks.jwt || leaks.api_key_value) { console.error('Posible contenido sensible en datos_playas.json'); process.exit(1); }
+          NODE
+
+      - name: Subir artefactos para revisar (feed + log del ancla)
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: feed-con-ancla
+          path: |
+            datos_playas.json
+            anclaje_log.txt
+          retention-days: 7
+          if-no-files-found: warn
