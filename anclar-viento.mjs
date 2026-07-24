@@ -57,7 +57,10 @@ export function computeBias(omNow, obsNow, cfg=ANCHOR_CFG){
   const bw = Math.max(0, Math.min(cfg.CAP_W, Math.round(obsNow.wind - omNow.wind)));
   const bgRaw = (omNow.gust!=null&&obsNow.gust!=null) ? (obsNow.gust - omNow.gust) : bw;
   const bg = Math.max(0, Math.min(cfg.CAP_G, Math.round(bgRaw)));
-  return { biasWind:bw, biasGust:Math.max(bg,bw) };
+  // La racha solo se sube si Open-Meteo se queda corto en la racha (bg). NO se fuerza a subir al
+  // nivel del viento: si OM ya sobreestima la racha, bg=0 y no la inflamos. El suelo "racha >= viento
+  // corregido" lo garantiza applyWindAnchor al aplicar, asi que no hace falta un max(bg,bw) aqui.
+  return { biasWind:bw, biasGust:bg };
 }
 
 // Aplica el ancla a HOY (time 0..23) en la ventana [nowHour, nowHour+HOURS), decayendo linealmente.
@@ -134,6 +137,9 @@ function selfTest(){
   { const b=computeBias({wind:20,gust:30},{wind:10,gust:12}); inv.push(['no baja si OM ya alto (bias 0)', b.biasWind===0]); }
   { const b=computeBias({wind:4,gust:12},{wind:40,gust:60}); inv.push(['tope CAP_W', b.biasWind===ANCHOR_CFG.CAP_W]); }
   { const b=computeBias({wind:4,gust:12},{wind:11,gust:19}); inv.push(['sube el caso email (~+7)', b.biasWind===7]); }
+  { const b=computeBias({wind:3,gust:16},{wind:10,gust:13}); inv.push(['no infla racha si OM ya la sobreestima (bg=0)', b.biasWind===7&&b.biasGust===0]); }
+  { const hourly={time:[10,11],wind:[3,3],gust:[16,16]}; applyWindAnchor(hourly,computeBias({wind:3,gust:16},{wind:10,gust:13}),10,ANCHOR_CFG);
+    inv.push(['racha no se dispara: 16 se queda en 16, no 23', hourly.gust[0]===16]); }
   { const hourly={time:[10,11,12,13,24,25],wind:[5,5,5,5,5,5],gust:[8,8,8,8,8,8]}; const info=applyWindAnchor(hourly,{biasWind:9,biasGust:12},11,ANCHOR_CFG);
     inv.push(['no toca ayer/futuro (t>=24)', hourly.wind[4]===5&&hourly.wind[5]===5]);
     inv.push(['no toca horas pasadas (t<now)', hourly.wind[0]===5]);
