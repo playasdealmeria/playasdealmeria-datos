@@ -361,7 +361,7 @@ async function scenariosAt(lat,lng){
   const wx=await getJSON(u);
   let sst=null,marD=null,marH=null; // datos v91.14-B: sin dato marino -> null (se arrastra el ultimo conocido en main)
   try{
-    const mar=await getJSON(`https://marine-api.open-meteo.com/v1/marine?latitude=${lat}&longitude=${lng}&current=sea_surface_temperature&hourly=wave_height,wave_direction,sea_level_height_msl&daily=wave_height_max,wave_direction_dominant&timezone=auto&forecast_days=${FORECAST_DAYS}`);
+    const mar=await getJSON(`https://marine-api.open-meteo.com/v1/marine?latitude=${lat}&longitude=${lng}&current=sea_surface_temperature&hourly=wave_height,wave_direction,sea_surface_temperature&daily=wave_height_max,wave_direction_dominant&timezone=auto&forecast_days=${FORECAST_DAYS}`);
     if(mar.current&&mar.current.sea_surface_temperature!=null)sst=Math.round(mar.current.sea_surface_temperature);
     if(mar.daily)marD=mar.daily;
     if(mar.hourly)marH=mar.hourly;
@@ -369,6 +369,36 @@ async function scenariosAt(lat,lng){
   const cur=wx.current||{},d=wx.daily||{},out=[];
   const wh=i=>marD&&marD.wave_height_max?marD.wave_height_max[i]:null;
   const wd=i=>marD&&marD.wave_direction_dominant?marD.wave_direction_dominant[i]:null;
+  /* v91.283: el agua de CADA dia, no la lectura de ahora repetida siete veces.
+     Se promedia 8:00-22:00, la misma franja que ya usan las partes del dia
+     (summarizePart: mañana 8-15, tarde 15-22). La Marine API no tiene agregado diario
+     de temperatura del agua, solo por horas, asi que hay que promediar aqui.
+     Sin dato por horas se usa la lectura actual: el peor caso es lo de siempre. */
+  const __sstDay={};
+  if(marH&&Array.isArray(marH.time)&&Array.isArray(marH.sea_surface_temperature)){
+    const acc={};
+    marH.time.forEach((t,i)=>{ const v=marH.sea_surface_temperature[i]; if(v==null)return;
+      const hh=parseInt(String(t).slice(11,13),10); if(!(hh>=8&&hh<22))return;
+      const k=String(t).slice(0,10); (acc[k]=acc[k]||[]).push(Number(v)); });
+    Object.keys(acc).forEach(k=>{ __sstDay[k]=roundAvg(acc[k]); });
+  }
+  const sstFor=(ds)=>{ const v=__sstDay[ds]; return v!=null?v:sst; };
+  /* v91.283: maxima y minima de aire de cada dia sacadas de la serie POR HORAS, que se
+     pide en la misma llamada. Es la red antes de rendirse a null: el agregado diario y
+     la serie horaria son campos distintos de la respuesta, asi que falla uno sin el otro.
+     Antes el hueco se rellenaba con 0 °C, que no es "no lo se" sino un dato falso. */
+  const __airDay={};
+  {
+    const _hr=wx.hourly||{};
+    if(Array.isArray(_hr.time)&&Array.isArray(_hr.temperature_2m)){
+      _hr.time.forEach((t,i)=>{ const v=_hr.temperature_2m[i]; if(v==null)return;
+        const k=String(t).slice(0,10), n=Number(v); if(!Number.isFinite(n))return;
+        const a=(__airDay[k]=__airDay[k]||{mx:-Infinity,mn:Infinity});
+        if(n>a.mx)a.mx=n; if(n<a.mn)a.mn=n; });
+    }
+  }
+  const airMax=(ds)=>{ const a=__airDay[ds]; return a&&Number.isFinite(a.mx)?a.mx:null; };
+  const airMin=(ds)=>{ const a=__airDay[ds]; return a&&Number.isFinite(a.mn)?a.mn:null; };
   const len=Math.min(FORECAST_DAYS,(d.time||[]).length||FORECAST_DAYS);
   for(let i=0;i<len;i++){
     const dateStr=d.time?.[i]||new Date(Date.now()+i*864e5).toISOString().slice(0,10);
@@ -379,9 +409,12 @@ async function scenariosAt(lat,lng){
       key:i===0?'hoy':'d'+i,
       label:i===0?'Hoy':dayLabel(dateStr,i),
       ico:e.ico,
-      temp:Math.round(d.temperature_2m_max?.[i] ?? (i===0 ? cur.temperature_2m : 0) ?? 0),
-      min:Math.round(d.temperature_2m_min?.[i]??0),
-      agua:sst,
+      /* v91.283: sin dato es null, no 0. Un 0 se pintaba como "0°" y ademas
+         tempCapSeverity lo daba por valido (<20) y tapaba la categoria en "Regular".
+         Orden: agregado diario, lectura actual (solo el dia 0), serie horaria, null. */
+      temp:(()=>{const _t=d.temperature_2m_max?.[i] ?? (i===0 ? cur.temperature_2m : null) ?? airMax(dateStr);return _t!=null?Math.round(_t):null;})(),
+      min:(()=>{const _m=d.temperature_2m_min?.[i] ?? airMin(dateStr);return _m!=null?Math.round(_m):null;})(), // v91.283: igual que temp
+      agua:sstFor(dateStr), // v91.283: el agua de ESE dia
       waveH:wh(i),
       waveDir:wd(i),
       estado:e.estado,
@@ -406,7 +439,8 @@ async function scenariosAt(lat,lng){
     const date=String(t).slice(0,10),hh=parseInt(String(t).slice(11,13),10),di=dateIndex[date];
     if(di==null||Number.isNaN(hh))return;
     hourly.time.push(di*24+hh);
-    hourly.temp.push(Math.round(hr.temperature_2m?.[i]??0));
+    // v91.283: un hueco en la serie por horas se pintaba como "0°" en la tira de horas.
+    hourly.temp.push(hr.temperature_2m?.[i]!=null?Math.round(hr.temperature_2m[i]):null);
     hourly.rh.push(hr.relative_humidity_2m?.[i]!=null?Math.round(hr.relative_humidity_2m[i]):null);
     hourly.pr.push(hr.precipitation?.[i]!=null?Math.round(hr.precipitation[i]*10)/10:0);
     hourly.pop.push(hr.precipitation_probability?.[i]!=null?Math.round(hr.precipitation_probability[i]):0);
@@ -1060,6 +1094,22 @@ async function main(){
     beaches,
     air
   };
+  /* v91.283: NO EMPEORAR. mapLimit se traga el fallo de cada playa y sigue, asi que si la
+     API corta a mitad de tanda el fichero se escribia igual, con menos playas, y el
+     workflow lo subia sin que saltara nada. Aqui se compara con el fichero anterior,
+     contando solo las playas que siguen en el catalogo: si esta tanda trae menos, no se
+     escribe y se sale con error. Se pierde una de las 48 actualizaciones diarias y sigue
+     en pie la anterior, que siempre es mejor que publicar el feed a medias. Una playa que
+     nunca ha funcionado no bloquea nada, porque tampoco esta en el fichero anterior. */
+  {
+    const _ids=new Set(catalog.map(b=>String(b.id)));
+    const _falta=catalog.filter(b=>!beaches[b.id]).map(b=>b.nombre||b.id);
+    const _antes=Object.keys(prevBeaches||{}).filter(k=>_ids.has(String(k))).length;
+    const _ahora=Object.keys(beaches).filter(k=>_ids.has(String(k))).length;
+    if(_falta.length)console.error('  ! sin datos ('+_falta.length+'): '+_falta.join(', '));
+    if(_ahora===0)throw new Error('tanda vacia: 0 playas con datos, no se escribe nada');
+    if(_antes&&_ahora<_antes)throw new Error('tanda incompleta: '+_ahora+' playas frente a '+_antes+' del fichero anterior. No se escribe: se conserva el anterior.');
+  }
   await writeFile(new URL('./datos_playas.json',import.meta.url),JSON.stringify(out));
   const okBeaches=Object.keys(beaches).length;
   const okAir=Object.values(air).filter(a=>!a.error).length;
