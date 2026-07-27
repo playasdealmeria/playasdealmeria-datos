@@ -897,3 +897,4 @@
 {"ts":"2026-07-26T23:35:39.395Z","hourLocal":"2026-07-27T01:00","om_wind":4,"om_gust":5,"om_ratio":1.25,"obs_wind":10,"obs_gust":15,"obs_ratio":1.5,"obs_fint":"2026-07-26T23:00:00+0000","gust_err":-10}
 {"ts":"2026-07-26T23:43:50.223Z","hourLocal":"2026-07-27T01:00","om_wind":4,"om_gust":5,"om_ratio":1.25,"obs_wind":10,"obs_gust":15,"obs_ratio":1.5,"obs_fint":"2026-07-26T23:00:00+0000","gust_err":-10}
 {"ts":"2026-07-27T00:05:35.018Z","hourLocal":"2026-07-27T02:00","om_wind":6,"om_gust":8,"om_ratio":1.33,"obs_wind":10,"obs_gust":15,"obs_ratio":1.5,"obs_fint":"2026-07-26T23:00:00+0000","gust_err":-7}
+{"ts":"2026-07-27T00:36:26.885Z","hourLocal":"2026-07-27T02:00","om_wind":6,"om_gust":8,"om_ratio":1.33,"obs_wind":14,"obs_gust":18,"obs_ratio":1.29,"obs_fint":"2026-07-27T00:00:00+0000","gust_err":-10}
