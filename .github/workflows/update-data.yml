@@ -1,18 +1,11 @@
 name: Actualizar datos meteorológicos
 
-# v91.6 (Fase 0): añade ping opcional a healthchecks.io al final de cada ejecución.
-# Si el workflow deja de ejecutarse (cron de GitHub retrasado/saltado) o falla,
-# healthchecks.io te avisa por email. El resto del workflow es idéntico a v91.5.
-#
-# El cron interno se mantiene como RESPALDO; el disparador principal pasa a ser
-# cron-job.org llamando a workflow_dispatch (ver LEEME_PARCHE_V91_23_FASE0.md).
+# El cron interno se mantiene como respaldo; el disparador principal puede ser externo
+# mediante workflow_dispatch. GitHub Actions cron usa UTC.
 
 on:
   workflow_dispatch:
   schedule:
-    # Cada 30 minutos. Usamos minutos 17 y 47 para evitar el minuto 00,
-    # donde GitHub suele acumular más carga y puede retrasar o saltarse ejecuciones.
-    # Importante: GitHub Actions cron usa UTC.
     - cron: "17,47 * * * *"
 
 permissions:
@@ -30,16 +23,14 @@ jobs:
     env:
       AEMET_API_KEY: ${{ secrets.AEMET_API_KEY }}
       AEMET_OPENDATA_AREA: esp
-      # v91.11 · 9 jul 2026. Desde el runner de GitHub, TODAS las peticiones a la Junta
-      # morían por timeout. Diagnóstico (4 runs): el TCP conecta en 88 ms, curl -4 y
-      # openssl negocian TLS 1.3 sin problema, pero el handshake TLS de Node se cuelga.
-      # Node 24 manda un ClientHello grande (grupos post-cuánticos de OpenSSL) que un
-      # balanceador delante de la Junta descarta. Con TLS 1.2 responde en 413 ms.
-      # El arreglo vive en build-data.mjs (Agent de node:https). Aquí solo los márgenes.
-      #
-      # Si algún día arreglan su balanceador: JUNTA_TLS_MAX: "TLSv1.3" y comprobar el log.
+      # El balanceador de la Junta fallaba con el ClientHello TLS 1.3 de Node 24.
+      # build-data.mjs usa TLS 1.2 para esa fuente; aquí solo se fijan los márgenes.
       JUNTA_TIMEOUT_MS: "10000"
       JUNTA_BUDGET_MS: "180000"
+      # Instrumentación científica: dos snapshots durante una hora de cada tres.
+      # No afecta a datos_playas.json ni al baremo.
+      WIND_VALIDATION_CADENCE_HOURS: "3"
+      WIND_VALIDATION_LEADS: "1,6,12,24"
 
     steps:
       - name: Descargar repositorio
@@ -66,9 +57,12 @@ jobs:
           fi
           echo "AEMET_API_KEY configurada"
 
-      - name: Comprobar sintaxis del generador
-        run: node --check build-data.mjs
-
+      - name: Comprobar sintaxis y pruebas
+        run: |
+          node --check build-data.mjs
+          node --check validar-rachas.mjs
+          node --check analizar-rachas.mjs
+          node --test
 
       - name: Generar datos meteorológicos
         run: node build-data.mjs
@@ -83,22 +77,20 @@ jobs:
           console.log('JSON OK');
           console.log('generated_at:', json.generated_at || json.updated_at || '(sin fecha)');
           console.log('aemet ok:', json.aemet_alerts && json.aemet_alerts.ok);
-          // v91.52: se buscan VALORES de secreto, no nombres de parámetro.
-          // "api_key=[redacted]" o un "eyJ" suelto ya no hacen fallar el job.
           const leaks = {
             jwt: /eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/.test(raw),
             api_key_value: /api[_-]?key["']?\s*[:=]\s*["']?(?!\[redacted\])[A-Za-z0-9._-]{12,}/i.test(raw)
           };
           console.log('security:', leaks);
           const aemetOk = !!(json.aemet_alerts && json.aemet_alerts.ok);
-          if (!aemetOk) console.log('::warning::AEMET no disponible en esta ejecucion; se publican los avisos cacheados.');
+          if (!aemetOk) console.log('::warning::AEMET no disponible en esta ejecución; se publican los avisos cacheados.');
           if (leaks.jwt || leaks.api_key_value) {
             console.error('Se ha detectado posible contenido sensible en datos_playas.json');
             process.exit(1);
           }
           NODE
 
-      - name: Validar rachas contra estación real (no crítico)
+      - name: Registrar previsiones y observaciones de viento (no crítico)
         continue-on-error: true
         run: node validar-rachas.mjs
 
@@ -108,7 +100,7 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
           git add datos_playas.json
-          git add rachas_validacion_*.jsonl 2>/dev/null || true
+          git add viento_validacion_v2_*.jsonl 2>/dev/null || true
 
           if git diff --cached --quiet; then
             echo "No hay cambios que commitear"
@@ -117,7 +109,6 @@ jobs:
 
           git commit -m "Actualizar datos meteorológicos"
 
-          # Si el remoto ha avanzado mientras se generaban los datos, reintentamos una vez.
           if ! git push origin main; then
             echo "Push rechazado; sincronizando y regenerando datos..."
             git fetch origin main
@@ -125,7 +116,7 @@ jobs:
             node build-data.mjs
             node validar-rachas.mjs || true
             git add datos_playas.json
-            git add rachas_validacion_*.jsonl 2>/dev/null || true
+            git add viento_validacion_v2_*.jsonl 2>/dev/null || true
             if git diff --cached --quiet; then
               echo "No hay cambios tras sincronizar"
               exit 0
@@ -134,8 +125,6 @@ jobs:
             git push origin main
           fi
 
-      # v91.6: aviso a healthchecks.io. Es OPCIONAL: si no existe el secret
-      # HEALTHCHECK_URL, el paso no hace nada y el workflow sigue igual que antes.
       - name: Ping a healthchecks.io (opcional)
         if: ${{ always() }}
         env:
