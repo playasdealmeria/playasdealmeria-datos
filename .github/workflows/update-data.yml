@@ -101,6 +101,7 @@ jobs:
 
           git add datos_playas.json
           git add viento_validacion_v2_*.jsonl 2>/dev/null || true
+          git add banderas_historico_*.jsonl 2>/dev/null || true
 
           if git diff --cached --quiet; then
             echo "No hay cambios que commitear"
@@ -117,6 +118,7 @@ jobs:
             node validar-rachas.mjs || true
             git add datos_playas.json
             git add viento_validacion_v2_*.jsonl 2>/dev/null || true
+          git add banderas_historico_*.jsonl 2>/dev/null || true
             if git diff --cached --quiet; then
               echo "No hay cambios tras sincronizar"
               exit 0
