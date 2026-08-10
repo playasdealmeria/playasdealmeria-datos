@@ -52,12 +52,28 @@ function maxv(arr){const v=(arr||[]).filter(x=>x!=null&&!Number.isNaN(x));return
 function mode(arr){const v=(arr||[]).filter(x=>x!=null);if(!v.length)return null;const m=new Map();v.forEach(x=>m.set(x,(m.get(x)||0)+1));return [...m.entries()].sort((a,b)=>b[1]-a[1])[0][0];}
 function windType(dir,spd){if(spd<12)return 'flojo';if(dir>=45&&dir<=135)return 'levante';if(dir>135&&dir<200)return 'sur';if(dir>=200&&dir<=330)return 'poniente';return 'terral';}
 function codeEstado(c){if(c===0)return{estado:'sol',estadoTxt:'despejado',ico:'☀️'};if(c<=3)return{estado:'variable',estadoTxt:'parcialmente nublado',ico:'⛅'};if(c<=48)return{estado:'nubes',estadoTxt:'nublado o niebla',ico:'☁️'};if(c<=67)return{estado:'nubes',estadoTxt:'lluvia',ico:'🌧️'};if(c<=82)return{estado:'nubes',estadoTxt:'chubascos',ico:'🌦️'};if(c<=99)return{estado:'nubes',estadoTxt:'tormenta',ico:'⛈️'};return{estado:'variable',estadoTxt:'variable',ico:'⛅'};}
+const MARINE_MODELS = 'best_match,meteofrance_wave,dwd_ewam,ecmwf_wam';
+const MARINE_BEST_SUFFIX = 'marine_best_match';
+const MARINE_COMPARE_SUFFIXES = ['meteofrance_wave','dwd_ewam','ecmwf_wam'];
+function marineSeries(block,name,suffix){const a=block&&block[name+'_'+suffix];return Array.isArray(a)?a:[];}
+function marineMembers(block,index,heightName,dirName,periodName){return MARINE_COMPARE_SUFFIXES.map(m=>{const h=Number(marineSeries(block,heightName,m)[index]),d=Number(marineSeries(block,dirName,m)[index]),p=periodName?Number(marineSeries(block,periodName,m)[index]):NaN;if(!Number.isFinite(h))return null;const out={m,h};if(Number.isFinite(d))out.d=d;if(Number.isFinite(p))out.p=p;return out;}).filter(Boolean);}
+function aggregateWaveModels(rows){const groups={};(rows||[]).forEach(row=>(row&&row.waveModels||[]).forEach(x=>{if(!x||!x.m||!Number.isFinite(Number(x.h)))return;(groups[x.m]=groups[x.m]||[]).push(x);}));return MARINE_COMPARE_SUFFIXES.map(m=>{const list=groups[m]||[];if(!list.length)return null;const h=avg(list.map(x=>x.h)),d=meanDir(list.map(x=>x.d)),p=avg(list.map(x=>x.p));const out={m,h:Math.round(h*100)/100};if(d!=null)out.d=Math.round(d);if(p!=null)out.p=Math.round(p*10)/10;return out;}).filter(Boolean);}
+function normalizeMarineResponse(mar){
+  const h=mar&&mar.hourly||{},d=mar&&mar.daily||{},ht=Array.isArray(h.time)?h.time:[],dt=Array.isArray(d.time)?d.time:[];
+  const hBest=(name)=>{const a=marineSeries(h,name,MARINE_BEST_SUFFIX);return a.length?a:(Array.isArray(h[name])?h[name]:[]);};
+  const dBest=(name)=>{const a=marineSeries(d,name,MARINE_BEST_SUFFIX);return a.length?a:(Array.isArray(d[name])?d[name]:[]);};
+  return {current:mar&&mar.current||null,latitude:mar&&mar.latitude,longitude:mar&&mar.longitude,
+    hourly:{time:ht,wave_height:hBest('wave_height'),wave_direction:hBest('wave_direction'),sea_surface_temperature:hBest('sea_surface_temperature'),
+      wave_period:hBest('wave_period'),wave_models:ht.map((_,i)=>marineMembers(h,i,'wave_height','wave_direction','wave_period'))},
+    daily:{time:dt,wave_height_max:dBest('wave_height_max'),wave_direction_dominant:dBest('wave_direction_dominant'),
+      wave_models:dt.map((_,i)=>marineMembers(d,i,'wave_height_max','wave_direction_dominant',null))}};
+}
 function dayLabel(iso,i){if(i===0)return 'Hoy';if(i===1)return 'Mañana';const d=new Date(iso);return ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'][d.getDay()];}
 
 function summarizePart(dateStr,startHour,endHour,wh,mh){
   if(!wh||!Array.isArray(wh.time))return null;
   const marineByTime={};
-  if(mh&&Array.isArray(mh.time))mh.time.forEach((t,i)=>{marineByTime[t]={waveH:mh.wave_height?.[i],waveDir:mh.wave_direction?.[i]};});
+  if(mh&&Array.isArray(mh.time))mh.time.forEach((t,i)=>{marineByTime[t]={waveH:mh.wave_height?.[i],waveDir:mh.wave_direction?.[i],wavePeriod:mh.wave_period?.[i],waveModels:mh.wave_models?.[i]||[]};});
   const idxs=[];
   wh.time.forEach((t,i)=>{if(String(t).slice(0,10)!==dateStr)return;const hh=parseInt(String(t).slice(11,13),10);if(hh>=startHour&&hh<endHour)idxs.push(i);});
   if(!idxs.length)return null;
@@ -69,8 +85,9 @@ function summarizePart(dateStr,startHour,endHour,wh,mh){
   const dir=meanDir(idxs.map(i=>wh.wind_direction_10m?.[i]));
   const waveH=avg(times.map(t=>marineByTime[t]?.waveH));
   const waveDir=meanDir(times.map(t=>marineByTime[t]?.waveDir));
+  const wavePeriod=avg(times.map(t=>marineByTime[t]?.wavePeriod)),waveModels=aggregateWaveModels(times.map(t=>marineByTime[t]));
   const temp=avg(idxs.map(i=>wh.temperature_2m?.[i]));
-  return {ico:e.ico,estadoTxt:e.estadoTxt,temp:temp!=null?Math.round(temp):null,windK:spd!=null?Math.round(spd):null,gustK:gust!=null?Math.round(gust):(spd!=null?Math.round(spd*1.3):null),windDir:dir!=null?Math.round(dir):null,waveH:waveH!=null?Math.round(waveH*10)/10:null,waveDir:waveDir!=null?Math.round(waveDir):null};
+  return {ico:e.ico,estadoTxt:e.estadoTxt,temp:temp!=null?Math.round(temp):null,windK:spd!=null?Math.round(spd):null,gustK:gust!=null?Math.round(gust):(spd!=null?Math.round(spd*1.3):null),windDir:dir!=null?Math.round(dir):null,waveH:waveH!=null?Math.round(waveH*10)/10:null,waveDir:waveDir!=null?Math.round(waveDir):null,wavePeriod:wavePeriod!=null?Math.round(wavePeriod*10)/10:null,waveModels};
 }
 
 async function getJSON(url){
@@ -107,7 +124,10 @@ const JUNTA_MAP={
   '43':16236, // Los Cocedores (a mano 3 jul)
   '1':16541, // Playa de San Nicolás (610m)
   '2':16226, // Playa de Balanegra (corregida a mano 3 jul)
-  '3':16460, // Balerma - Guardias Viejas (corregida a mano 3 jul)
+  '3':16460, // Los Baños / Guardias Viejas / Punta Culo de Perro
+  '50':16222, // Playa de Balerma
+  '51':16255, // Cala Higuera
+  '52':16331, // Playa el Embarcadero
   '4':16210, // Poniente Almerimar beach (968m)
   '5':16596, // Punta Entinas - Sabinar beach (1463m)
   '6':16204, // Playa de Aguadulce (1129m)
@@ -143,6 +163,7 @@ const JUNTA_MAP={
   '49':16211, // Playa del Corralete (mapa 21jul)
 };
 const JUNTA_FLAG={BAPLAVERDE:'verde',BAPLAAMARILLA:'amarilla',BAPLAROJA:'roja',BAPLANEGRA:'negra'};
+const JUNTA_SEA={ASPPLATRANQ:'tranquilo',ASPPLAOLEAMODE:'moderado',ASPPLAOLEAFUER:'fuerte',ASPPLAVENTO:'ventoso'};
 // [label ES, código estable]. El código viaja al JSON para que la web traduzca sin comparar cadenas.
 const JUNTA_OCU={
   OCUPLABAJA:['Baja','baja'],
@@ -216,7 +237,7 @@ async function fetchJuntaOficial(){
     url:JUNTA_URL_PUB,
     license_note:'Reutilización autorizada citando la fuente (respuesta del IECA, ref. _7738, 9 jul 2026).',
     fetched_at:new Date().toISOString(),
-    requested:0, count:0, count_flags:0, // datos v91.11: se retira el contador de ocupación (dato no mantenido por la fuente)
+    requested:0, count:0, count_flags:0, count_sea:0, // v91.376: estado del mar oficial separado de la bandera
     tls:JUNTA_TLS_MAX, // v91.11 datos: TLS 1.2 para la Junta: con TLS 1.3 el balanceador de la Junta descarta el ClientHello de Node
     ok:false, truncated:false, elapsed_ms:0, errors:[]
   };
@@ -232,6 +253,7 @@ async function fetchJuntaOficial(){
       if(r.ok){
         const j=await r.json();const p=(j&&j.payload)||{};const rec={};
         const f=p.beach_flag&&p.beach_flag.code;if(f&&JUNTA_FLAG[f])rec.oflag=JUNTA_FLAG[f];
+        const sea=p.sea_condition&&p.sea_condition.code;if(sea&&JUNTA_SEA[sea])rec.osea=JUNTA_SEA[sea];
         /* datos v91.11: RETIRADA la lectura del antiguo campo de ocupación de la Junta.
            Veredicto del 13 jul sobre 368 commits/7 días: las 40 playas SIEMPRE en el mismo
            valor ("media-baja"), 0 cambios, 0 intradía — con jid distintos y verificados por
@@ -240,9 +262,10 @@ async function fetchJuntaOficial(){
            Ver AUDITORIA/PENDIENTES. La web ya lo ignoraba (OCUPACION_VISIBLE=false); esto
            solo deja de pedirlo y de escribirlo. */
         if(p.beach_state&&p.beach_state.code)rec.abierta=(p.beach_state.code==='ESPLASABIERTA');
-        if(rec.oflag){
-          rec.oflagSource=JUNTA_ATTR;
-          rec.ofiAt=new Date().toISOString(); // hora REAL de lectura, no la del build
+        if(rec.oflag||rec.osea){
+          const checkedAt=new Date().toISOString();
+          if(rec.oflag){rec.oflagSource=JUNTA_ATTR;rec.ofiAt=checkedAt;}
+          if(rec.osea){rec.oseaSource=JUNTA_ATTR;rec.oseaAt=checkedAt;}
           out[ourId]=rec;
         }
       } else if(meta.errors.length<3){ meta.errors.push('HTTP '+r.status+' en playa '+ourId); }
@@ -256,6 +279,7 @@ async function fetchJuntaOficial(){
   const __recs__=Object.values(out);
   meta.count=__recs__.length;
   meta.count_flags=__recs__.filter(r=>r.oflag).length;
+  meta.count_sea=__recs__.filter(r=>r.osea).length;
   meta.elapsed_ms=Date.now()-t0;
   meta.ok=meta.count>0 && !meta.truncated;
   console.log('· Datos oficiales Junta: '+meta.count+'/'+meta.requested+' playas ('+meta.count_flags+' banderas) en '+meta.elapsed_ms+' ms'+(meta.truncated?' (presupuesto agotado)':''));
@@ -279,7 +303,7 @@ const EJIDO_URL     = process.env.EJIDO_URL || 'https://elejido.es/playas/api/?u
 const EJIDO_ATTR    = 'Ayuntamiento de El Ejido';
 const EJIDO_TIMEOUT_MS = Math.max(1000, Number(process.env.EJIDO_TIMEOUT_MS || 6000));
 // nuestro_id <- [ids de El Ejido] (muchos-a-uno). Se toma la PEOR bandera entre las sub-playas.
-const EJIDO_MAP = { '3':[4,6,8], '4':[2,3] }; // 3 Balerma-Guardias Viejas <- Balerma(4)+Guardias(6)+Piedra del Moro(8) · 4 Almerimar <- Levante(2)+Poniente(3)
+const EJIDO_MAP = { '3':[6,8], '4':[2,3], '50':[4] }; // Guardias(6)+Piedra del Moro(8) · Almerimar Levante/Poniente(2,3) · Balerma(4)
 const EJIDO_SEV = { verde:1, amarilla:2, roja:3, negra:4 };
 function ejidoNorm(s){ s=String(s||'').toLowerCase().trim(); if(s==='amarillo')s='amarilla'; if(s==='rojo')s='roja'; return s; }
 function ejidoWorse(a,b){ return (EJIDO_SEV[b]||0)>(EJIDO_SEV[a]||0)?b:a; }
@@ -361,7 +385,7 @@ async function scenariosAt(lat,lng){
   const wx=await getJSON(u);
   let sst=null,marD=null,marH=null; // datos v91.14-B: sin dato marino -> null (se arrastra el ultimo conocido en main)
   try{
-    const mar=await getJSON(`https://marine-api.open-meteo.com/v1/marine?latitude=${lat}&longitude=${lng}&current=sea_surface_temperature&hourly=wave_height,wave_direction,sea_surface_temperature&daily=wave_height_max,wave_direction_dominant&timezone=auto&forecast_days=${FORECAST_DAYS}`);
+    const mar=normalizeMarineResponse(await getJSON(`https://marine-api.open-meteo.com/v1/marine?latitude=${lat}&longitude=${lng}&current=sea_surface_temperature&hourly=wave_height,wave_direction,wave_period,sea_surface_temperature&daily=wave_height_max,wave_direction_dominant&models=${MARINE_MODELS}&timezone=auto&forecast_days=${FORECAST_DAYS}`));
     if(mar.current&&mar.current.sea_surface_temperature!=null)sst=Math.round(mar.current.sea_surface_temperature);
     if(mar.daily)marD=mar.daily;
     if(mar.hourly)marH=mar.hourly;
@@ -369,6 +393,7 @@ async function scenariosAt(lat,lng){
   const cur=wx.current||{},d=wx.daily||{},out=[];
   const wh=i=>marD&&marD.wave_height_max?marD.wave_height_max[i]:null;
   const wd=i=>marD&&marD.wave_direction_dominant?marD.wave_direction_dominant[i]:null;
+  const waveModels=i=>marD&&marD.wave_models&&Array.isArray(marD.wave_models[i])?marD.wave_models[i]:[];
   /* v91.283: el agua de CADA dia, no la lectura de ahora repetida siete veces.
      Se promedia 8:00-22:00, la misma franja que ya usan las partes del dia
      (summarizePart: mañana 8-15, tarde 15-22). La Marine API no tiene agregado diario
@@ -383,6 +408,11 @@ async function scenariosAt(lat,lng){
     Object.keys(acc).forEach(k=>{ __sstDay[k]=roundAvg(acc[k]); });
   }
   const sstFor=(ds)=>{ const v=__sstDay[ds]; return v!=null?v:sst; };
+  const __wavePeriodDay={};
+  if(marH&&Array.isArray(marH.time)&&Array.isArray(marH.wave_period)){
+    const acc={};marH.time.forEach((t,i)=>{const v=marH.wave_period[i],hh=parseInt(String(t).slice(11,13),10);if(v==null||!(hh>=8&&hh<22))return;const k=String(t).slice(0,10);(acc[k]=acc[k]||[]).push(Number(v));});
+    Object.keys(acc).forEach(k=>{const v=avg(acc[k]);__wavePeriodDay[k]=v!=null?Math.round(v*10)/10:null;});
+  }
   /* v91.283: maxima y minima de aire de cada dia sacadas de la serie POR HORAS, que se
      pide en la misma llamada. Es la red antes de rendirse a null: el agregado diario y
      la serie horaria son campos distintos de la respuesta, asi que falla uno sin el otro.
@@ -417,6 +447,8 @@ async function scenariosAt(lat,lng){
       agua:sstFor(dateStr), // v91.283: el agua de ESE dia
       waveH:wh(i),
       waveDir:wd(i),
+      waveModels:waveModels(i),
+      wavePeriod:__wavePeriodDay[dateStr]??null,
       estado:e.estado,
       estadoTxt:e.estadoTxt,
       viento:windType(dir,spd),
@@ -432,7 +464,7 @@ async function scenariosAt(lat,lng){
     });
   }
   const dateIndex={};(d.time||[]).forEach((date,i)=>{if(i<FORECAST_DAYS)dateIndex[date]=i;});
-  const marineByTime={}; if(marH&&Array.isArray(marH.time))marH.time.forEach((t,i)=>{marineByTime[t]={waveH:marH.wave_height?.[i],waveDir:marH.wave_direction?.[i]};});
+  const marineByTime={}; if(marH&&Array.isArray(marH.time))marH.time.forEach((t,i)=>{marineByTime[t]={waveH:marH.wave_height?.[i],waveDir:marH.wave_direction?.[i]};}); /* v91.376: los miembros se publican solo por dia/tramo; hourly queda compacto */
   const hourly={time:[],temp:[],rh:[],pr:[],pop:[],code:[],wind:[],gust:[],wdir:[],wave:[],waveDir:[]};
   const hr=wx.hourly||{};
   (hr.time||[]).forEach((t,i)=>{
@@ -490,7 +522,9 @@ function aggregatePart(parts){
     gustK:roundMax(src.map(x=>x.gustK)),
     windDir,
     waveH:avg(src.map(x=>x.waveH))!=null?Math.round(avg(src.map(x=>x.waveH))*10)/10:null,
-    waveDir:meanDir(src.map(x=>x.waveDir))
+    waveDir:meanDir(src.map(x=>x.waveDir)),
+    waveModels:aggregateWaveModels(src),
+    wavePeriod:avg(src.map(x=>x.wavePeriod))!=null?Math.round(avg(src.map(x=>x.wavePeriod))*10)/10:null
   };
 }
 function aggregateHourly(allHourly){
@@ -532,6 +566,8 @@ function aggregateProvinceFromBeaches(beaches){
       agua:roundAvg(list.map(x=>x.agua)),
       waveH:avg(list.map(x=>x.waveH))!=null?Math.round(avg(list.map(x=>x.waveH))*10)/10:null,
       waveDir:meanDir(list.map(x=>x.waveDir)),
+      waveModels:aggregateWaveModels(list),
+      wavePeriod:avg(list.map(x=>x.wavePeriod))!=null?Math.round(avg(list.map(x=>x.wavePeriod))*10)/10:null,
       estado:common(list.map(x=>x.estado),'variable'),
       estadoTxt:common(list.map(x=>x.estadoTxt),'variable'),
       viento,
@@ -1040,9 +1076,9 @@ async function appendFlagHistory(beaches,catalog){
     /* datos v91.13b: ya NO se graba exp. Es un atributo MUTABLE (se corrigio en 15/40 el 15 jul) y no se denormaliza dentro de un log de solo-anadir: el registro lleva id, asi que exp se DERIVA al analizar uniendo con playas_catalogo.json. Asi este bug no puede repetirse. */
     const ts=new Date().toISOString(); const lines=[];
     for(const [id,bd] of Object.entries(beaches)){
-      if(!bd||!bd.oflag) continue;                       // solo verdad de campo (bandera oficial)
+      if(!bd||(!bd.oflag&&!bd.osea)) continue;           // verdad de campo: bandera o estado oficial del mar
       const w=currentHourWeather(bd);
-      lines.push(JSON.stringify({ts,id:Number(id),oflag:bd.oflag,abierta:(bd.abierta==null?null:bd.abierta),windK:(w.windK==null?null:w.windK),gustK:(w.gustK==null?null:w.gustK),windDir:(w.windDir==null?null:w.windDir),waveH:(w.waveH==null?null:w.waveH),waveDir:(w.waveDir==null?null:w.waveDir),temp:(w.temp==null?null:w.temp),code:(w.code==null?null:w.code)}));
+      lines.push(JSON.stringify({ts,id:Number(id),oflag:bd.oflag||null,osea:bd.osea||null,abierta:(bd.abierta==null?null:bd.abierta),windK:(w.windK==null?null:w.windK),gustK:(w.gustK==null?null:w.gustK),windDir:(w.windDir==null?null:w.windDir),waveH:(w.waveH==null?null:w.waveH),waveDir:(w.waveDir==null?null:w.waveDir),temp:(w.temp==null?null:w.temp),code:(w.code==null?null:w.code)}));
     }
     if(!lines.length){ console.log('· Histórico de banderas: sin banderas oficiales que registrar'); return; }
     const fname='banderas_historico_'+year+'-'+month+'.jsonl';
