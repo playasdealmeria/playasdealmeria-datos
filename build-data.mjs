@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/* v91.378: partes 07-14 y 14-22; dia completo 07-22 */
 /**
  * build-data.mjs — Genera datos_playas.json para playasdealmeria.es
  *
@@ -394,23 +395,23 @@ async function scenariosAt(lat,lng){
   const wh=i=>marD&&marD.wave_height_max?marD.wave_height_max[i]:null;
   const wd=i=>marD&&marD.wave_direction_dominant?marD.wave_direction_dominant[i]:null;
   const waveModels=i=>marD&&marD.wave_models&&Array.isArray(marD.wave_models[i])?marD.wave_models[i]:[];
-  /* v91.283: el agua de CADA dia, no la lectura de ahora repetida siete veces.
-     Se promedia 8:00-22:00, la misma franja que ya usan las partes del dia
-     (summarizePart: mañana 8-15, tarde 15-22). La Marine API no tiene agregado diario
+  /* v91.283/v91.378: el agua de CADA dia, no la lectura de ahora repetida siete veces.
+     Se promedia 07:00-22:00, la misma jornada que usan las partes del dia
+     (summarizePart: mañana 07-14, tarde 14-22). La Marine API no tiene agregado diario
      de temperatura del agua, solo por horas, asi que hay que promediar aqui.
      Sin dato por horas se usa la lectura actual: el peor caso es lo de siempre. */
   const __sstDay={};
   if(marH&&Array.isArray(marH.time)&&Array.isArray(marH.sea_surface_temperature)){
     const acc={};
     marH.time.forEach((t,i)=>{ const v=marH.sea_surface_temperature[i]; if(v==null)return;
-      const hh=parseInt(String(t).slice(11,13),10); if(!(hh>=8&&hh<22))return;
+      const hh=parseInt(String(t).slice(11,13),10); if(!(hh>=7&&hh<22))return;
       const k=String(t).slice(0,10); (acc[k]=acc[k]||[]).push(Number(v)); });
     Object.keys(acc).forEach(k=>{ __sstDay[k]=roundAvg(acc[k]); });
   }
   const sstFor=(ds)=>{ const v=__sstDay[ds]; return v!=null?v:sst; };
   const __wavePeriodDay={};
   if(marH&&Array.isArray(marH.time)&&Array.isArray(marH.wave_period)){
-    const acc={};marH.time.forEach((t,i)=>{const v=marH.wave_period[i],hh=parseInt(String(t).slice(11,13),10);if(v==null||!(hh>=8&&hh<22))return;const k=String(t).slice(0,10);(acc[k]=acc[k]||[]).push(Number(v));});
+    const acc={};marH.time.forEach((t,i)=>{const v=marH.wave_period[i],hh=parseInt(String(t).slice(11,13),10);if(v==null||!(hh>=7&&hh<22))return;const k=String(t).slice(0,10);(acc[k]=acc[k]||[]).push(Number(v));});
     Object.keys(acc).forEach(k=>{const v=avg(acc[k]);__wavePeriodDay[k]=v!=null?Math.round(v*10)/10:null;});
   }
   /* v91.283: maxima y minima de aire de cada dia sacadas de la serie POR HORAS, que se
@@ -458,8 +459,8 @@ async function scenariosAt(lat,lng){
       pone:d.sunset?.[i]?String(d.sunset[i]).slice(11,16):'21:30', // datos v91.14-B
       uv:d.uv_index_max?.[i]!=null?Math.round(d.uv_index_max[i]):null, // datos v91.14-B: guardaba el array, no el elemento (Math.round(null)=0)
       parts:{
-        morning:summarizePart(dateStr,8,15,wx.hourly||{},marH||{}),
-        afternoon:summarizePart(dateStr,15,22,wx.hourly||{},marH||{})
+        morning:summarizePart(dateStr,7,14,wx.hourly||{},marH||{}),
+        afternoon:summarizePart(dateStr,14,22,wx.hourly||{},marH||{})
       }
     });
   }
