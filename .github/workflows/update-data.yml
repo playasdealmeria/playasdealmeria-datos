@@ -67,6 +67,10 @@ jobs:
       - name: Generar datos meteorológicos
         run: node build-data.mjs
 
+      - name: Auditar persistencia de banderas (no critico)
+        continue-on-error: true
+        run: node auditar-banderas.mjs
+
       - name: Validar JSON generado
         run: |
           test -f datos_playas.json

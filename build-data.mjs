@@ -165,6 +165,9 @@ const JUNTA_MAP={
 };
 const JUNTA_FLAG={BAPLAVERDE:'verde',BAPLAAMARILLA:'amarilla',BAPLAROJA:'roja',BAPLANEGRA:'negra'};
 const JUNTA_SEA={ASPPLATRANQ:'tranquilo',ASPPLAOLEAMODE:'moderado',ASPPLAOLEAFUER:'fuerte',ASPPLAVENTO:'ventoso'};
+/* v91.380: fuentes oficiales con frescura demostrable */
+const JUNTA_FLAG_QUARANTINE = new Set(['26']); // Cala San Pedro: 446/446 rojas sin timestamp propio ni respaldo municipal.
+const JUNTA_SEA_OPERATIONAL = false; // 46/46 series sin un solo cambio: se observa, pero no se publica como estado actual.
 // [label ES, código estable]. El código viaja al JSON para que la web traduzca sin comparar cadenas.
 const JUNTA_OCU={
   OCUPLABAJA:['Baja','baja'],
@@ -238,7 +241,8 @@ async function fetchJuntaOficial(){
     url:JUNTA_URL_PUB,
     license_note:'Reutilización autorizada citando la fuente (respuesta del IECA, ref. _7738, 9 jul 2026).',
     fetched_at:new Date().toISOString(),
-    requested:0, count:0, count_flags:0, count_sea:0, // v91.376: estado del mar oficial separado de la bandera
+    requested:0, count:0, count_flags:0, count_sea:0, count_sea_observed:0,
+    sea_operational:JUNTA_SEA_OPERATIONAL, quarantined_flags:[],
     tls:JUNTA_TLS_MAX, // v91.11 datos: TLS 1.2 para la Junta: con TLS 1.3 el balanceador de la Junta descarta el ClientHello de Node
     ok:false, truncated:false, elapsed_ms:0, errors:[]
   };
@@ -253,8 +257,9 @@ async function fetchJuntaOficial(){
       const r=await juntaFetch(JUNTA_BASE+jid);
       if(r.ok){
         const j=await r.json();const p=(j&&j.payload)||{};const rec={};
-        const f=p.beach_flag&&p.beach_flag.code;if(f&&JUNTA_FLAG[f])rec.oflag=JUNTA_FLAG[f];
-        const sea=p.sea_condition&&p.sea_condition.code;if(sea&&JUNTA_SEA[sea])rec.osea=JUNTA_SEA[sea];
+        const f=p.beach_flag&&p.beach_flag.code;
+        if(f&&JUNTA_FLAG[f]){if(JUNTA_FLAG_QUARANTINE.has(String(ourId)))meta.quarantined_flags.push(String(ourId));else rec.oflag=JUNTA_FLAG[f];}
+        const sea=p.sea_condition&&p.sea_condition.code;if(sea&&JUNTA_SEA[sea])meta.count_sea_observed++;
         /* datos v91.11: RETIRADA la lectura del antiguo campo de ocupación de la Junta.
            Veredicto del 13 jul sobre 368 commits/7 días: las 40 playas SIEMPRE en el mismo
            valor ("media-baja"), 0 cambios, 0 intradía — con jid distintos y verificados por
@@ -263,10 +268,10 @@ async function fetchJuntaOficial(){
            Ver AUDITORIA/PENDIENTES. La web ya lo ignoraba (OCUPACION_VISIBLE=false); esto
            solo deja de pedirlo y de escribirlo. */
         if(p.beach_state&&p.beach_state.code)rec.abierta=(p.beach_state.code==='ESPLASABIERTA');
-        if(rec.oflag||rec.osea){
+        if(rec.oflag||rec.abierta!=null){
           const checkedAt=new Date().toISOString();
           if(rec.oflag){rec.oflagSource=JUNTA_ATTR;rec.ofiAt=checkedAt;}
-          if(rec.osea){rec.oseaSource=JUNTA_ATTR;rec.oseaAt=checkedAt;}
+
           out[ourId]=rec;
         }
       } else if(meta.errors.length<3){ meta.errors.push('HTTP '+r.status+' en playa '+ourId); }
@@ -280,7 +285,7 @@ async function fetchJuntaOficial(){
   const __recs__=Object.values(out);
   meta.count=__recs__.length;
   meta.count_flags=__recs__.filter(r=>r.oflag).length;
-  meta.count_sea=__recs__.filter(r=>r.osea).length;
+  meta.count_sea=0; // cuarentena: la API no aporta timestamp y todas las series observadas fueron invariantes
   meta.elapsed_ms=Date.now()-t0;
   meta.ok=meta.count>0 && !meta.truncated;
   console.log('· Datos oficiales Junta: '+meta.count+'/'+meta.requested+' playas ('+meta.count_flags+' banderas) en '+meta.elapsed_ms+' ms'+(meta.truncated?' (presupuesto agotado)':''));
@@ -308,6 +313,15 @@ const EJIDO_MAP = { '3':[6,8], '4':[2,3], '50':[4] }; // Guardias(6)+Piedra del 
 const EJIDO_SEV = { verde:1, amarilla:2, roja:3, negra:4 };
 function ejidoNorm(s){ s=String(s||'').toLowerCase().trim(); if(s==='amarillo')s='amarilla'; if(s==='rojo')s='roja'; return s; }
 function ejidoWorse(a,b){ return (EJIDO_SEV[b]||0)>(EJIDO_SEV[a]||0)?b:a; }
+function madridMunicipalTimestamp(value){
+  const m=String(value||'').trim().match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})$/);if(!m)return null;
+  const wanted=Date.UTC(+m[1],+m[2]-1,+m[3],+m[4],+m[5],+m[6]);let guess=wanted;
+  const fmt=new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/Madrid',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'});
+  for(let i=0;i<3;i++){const p={};for(const x of fmt.formatToParts(new Date(guess)))p[x.type]=x.value;const seen=Date.UTC(+p.year,+p.month-1,+p.day,+p.hour,+p.minute,+p.second);guess+=wanted-seen;}
+  const check={};for(const x of fmt.formatToParts(new Date(guess)))check[x.type]=x.value;
+  if([check.year,check.month,check.day,check.hour,check.minute,check.second].join('-')!==[m[1],m[2],m[3],m[4],m[5],m[6]].join('-'))return null;
+  return new Date(guess).toISOString();
+}
 async function fetchEjidoOficial(){
   const meta={enabled:EJIDO_OFICIAL, source:EJIDO_ATTR, requested:Object.keys(EJIDO_MAP).length, count:0, count_flags:0, elapsed_ms:0, errors:[]};
   if(!EJIDO_OFICIAL){ console.log('· Datos oficiales El Ejido: DESACTIVADOS (EJIDO_OFICIAL=false)'); return {data:{},meta}; }
@@ -320,14 +334,14 @@ async function fetchEjidoOficial(){
     if(!Array.isArray(arr)) throw new Error('respuesta no es un array');
     const byId={}; for(const b of arr) byId[b.id]=b;
     for(const [ourId,subIds] of Object.entries(EJIDO_MAP)){
-      let flag=null, upd=null;
+      let flag=null;const timestamps=[];
       for(const sid of subIds){
-        const sb=byId[sid]; if(!sb) continue;
-        const f=ejidoNorm(sb.bandera); if(!EJIDO_SEV[f]) continue;
-        flag = flag ? ejidoWorse(flag,f) : f;
-        if(sb.actualizado && (!upd || String(sb.actualizado)>upd)) upd=String(sb.actualizado);
+        const sb=byId[sid];if(!sb){flag=null;break;}
+        const f=ejidoNorm(sb.bandera),at=madridMunicipalTimestamp(sb.actualizado);if(!EJIDO_SEV[f]||!at){flag=null;break;}
+        flag=flag?ejidoWorse(flag,f):f;timestamps.push(Date.parse(at));
+
       }
-      if(flag){ out[ourId]={oflag:flag, oflagSource:EJIDO_ATTR, ofiAt:new Date().toISOString()}; meta.count++; meta.count_flags++; }
+      if(flag&&timestamps.length===subIds.length){out[ourId]={oflag:flag,oflagSource:EJIDO_ATTR,ofiAt:new Date(Math.min(...timestamps)).toISOString()};meta.count++;meta.count_flags++;}
     }
   }catch(e){ meta.errors.push(String(e&&e.message||e).slice(0,120)); console.log('! El Ejido oficial: '+meta.errors[0]); }
   meta.elapsed_ms=Date.now()-t0;
@@ -1112,9 +1126,9 @@ async function appendFlagHistory(beaches,catalog){
     /* datos v91.13b: ya NO se graba exp. Es un atributo MUTABLE (se corrigio en 15/40 el 15 jul) y no se denormaliza dentro de un log de solo-anadir: el registro lleva id, asi que exp se DERIVA al analizar uniendo con playas_catalogo.json. Asi este bug no puede repetirse. */
     const ts=new Date().toISOString(); const lines=[];
     for(const [id,bd] of Object.entries(beaches)){
-      if(!bd||(!bd.oflag&&!bd.osea)) continue;           // verdad de campo: bandera o estado oficial del mar
+      if(!bd||!bd.oflag) continue; // v91.380: solo banderas operativas; sea_condition queda en cuarentena
       const w=currentHourWeather(bd);
-      lines.push(JSON.stringify({ts,id:Number(id),oflag:bd.oflag||null,osea:bd.osea||null,abierta:(bd.abierta==null?null:bd.abierta),windK:(w.windK==null?null:w.windK),gustK:(w.gustK==null?null:w.gustK),windDir:(w.windDir==null?null:w.windDir),waveH:(w.waveH==null?null:w.waveH),waveDir:(w.waveDir==null?null:w.waveDir),temp:(w.temp==null?null:w.temp),code:(w.code==null?null:w.code)}));
+      lines.push(JSON.stringify({ts,id:Number(id),oflag:bd.oflag,oflagSource:bd.oflagSource||null,abierta:(bd.abierta==null?null:bd.abierta),windK:(w.windK==null?null:w.windK),gustK:(w.gustK==null?null:w.gustK),windDir:(w.windDir==null?null:w.windDir),waveH:(w.waveH==null?null:w.waveH),waveDir:(w.waveDir==null?null:w.waveDir),temp:(w.temp==null?null:w.temp),code:(w.code==null?null:w.code)}));
     }
     if(!lines.length){ console.log('· Histórico de banderas: sin banderas oficiales que registrar'); return; }
     const fname='banderas_historico_'+year+'-'+month+'.jsonl';
