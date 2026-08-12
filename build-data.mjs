@@ -377,6 +377,41 @@ const __ROQUETAS_RES__=await fetchRoquetasOficial();
 const __ROQUETAS__=__ROQUETAS_RES__.data;
 __MUNI_OFI__.push(__ROQUETAS__);
 
+/* v91.379: bandera oficial del Ayuntamiento de Vera, fail-closed */
+// La ficha #37 representa el litoral de Vera completo. El Ayuntamiento publica por separado
+// Las Marinas-Bolaga, El Playazo, Puerto Rey y Cala Marques: se exige leer las cuatro y se
+// conserva la PEOR bandera. No se confunde la bandera de bano diaria con la Bandera Azul anual.
+const VERA_OFICIAL = String(process.env.VERA_OFICIAL ?? 'true').toLowerCase() !== 'false';
+const VERA_BASE_URL = process.env.VERA_BASE_URL || 'https://www.vera.es/turismo/index.php?page=playas&subpage=plantilla_playa&id=';
+const VERA_ATTR = 'Ayuntamiento de Vera';
+const VERA_TIMEOUT_MS = Math.max(1000, Number(process.env.VERA_TIMEOUT_MS || 6000));
+const VERA_BEACHES = [{id:1,name:'LAS MARINAS-BOLAGA'},{id:2,name:'EL PLAYAZO'},{id:3,name:'PUERTO REY'},{id:4,name:'CALA MARQUES'}];
+function veraText(html){return String(html||'').replace(/<script\b[\s\S]*?<\/script>/gi,' ').replace(/<style\b[\s\S]*?<\/style>/gi,' ').replace(/<[^>]+>/g,' ').replace(/&(?:nbsp|#160);/gi,' ').replace(/&aacute;/gi,'a').replace(/&eacute;/gi,'e').replace(/&iacute;/gi,'i').replace(/&oacute;/gi,'o').replace(/&uacute;/gi,'u').replace(/&ntilde;/gi,'n').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim().toUpperCase();}
+function veraFlag(html,heading){const text=veraText(html),headingAt=text.indexOf(veraText(heading)),matches=[...text.matchAll(/\bBANDERA\s+(VERDE|AMARILLA|ROJA|NEGRA)\b/g)];if(headingAt<0||!matches.length||headingAt>matches[0].index)return null;const unique=[...new Set(matches.map(m=>m[1].toLowerCase()))];return unique.length===1?unique[0]:null;}
+async function fetchVeraOficial(){
+  const meta={enabled:VERA_OFICIAL,source:VERA_ATTR,requested:1,count:0,count_flags:0,source_pages:VERA_BEACHES.length,elapsed_ms:0,errors:[]};
+  if(!VERA_OFICIAL){console.log('· Datos oficiales Vera: DESACTIVADOS (VERA_OFICIAL=false)');return {data:{},meta};}
+  const t0=Date.now(),out={},flags=[];
+  try{
+    for(const beach of VERA_BEACHES){
+      const ctrl=new AbortController(),to=setTimeout(()=>ctrl.abort(),VERA_TIMEOUT_MS);let html;
+      try{html=await fetch(VERA_BASE_URL+encodeURIComponent(beach.id),{headers:{'User-Agent':JUNTA_UA,'Accept':'text/html'},signal:ctrl.signal}).then(r=>{if(!r.ok)throw new Error('HTTP '+r.status+' en '+beach.name);return r.text();});}
+      finally{clearTimeout(to);}
+      const flag=veraFlag(html,beach.name);if(!flag||!EJIDO_SEV[flag])throw new Error('contenido no validado en '+beach.name);
+      flags.push(flag);
+    }
+    if(flags.length!==VERA_BEACHES.length)throw new Error('lectura incompleta de playas de Vera');
+    const flag=flags.reduce((worst,value)=>worst?ejidoWorse(worst,value):value,null);
+    out['37']={oflag:flag,oflagSource:VERA_ATTR,ofiAt:new Date().toISOString()};meta.count=1;meta.count_flags=1;
+  }catch(e){meta.errors.push(String(e&&e.message||e).slice(0,160));console.log('! Vera oficial: '+meta.errors[0]);}
+  meta.elapsed_ms=Date.now()-t0;
+  console.log('· Datos oficiales Vera: '+meta.count_flags+'/'+meta.requested+' fichas con bandera ('+VERA_BEACHES.length+' fuentes exigidas) en '+meta.elapsed_ms+' ms');
+  return {data:out,meta};
+}
+const __VERA_RES__=await fetchVeraOficial();
+const __VERA__=__VERA_RES__.data;
+__MUNI_OFI__.push(__VERA__);
+
 
 // ===== fin datos oficiales Junta =====
 
