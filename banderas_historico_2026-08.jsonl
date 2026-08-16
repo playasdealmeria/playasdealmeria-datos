@@ -18932,3 +18932,41 @@
 {"ts":"2026-08-16T17:56:37.609Z","id":43,"oflag":"verde","oflagSource":"Junta de Andalucía · andalucia.org","abierta":true,"windK":15,"gustK":31,"windDir":93,"waveH":0.86,"waveDir":97,"temp":31,"code":2}
 {"ts":"2026-08-16T17:56:37.609Z","id":44,"oflag":"verde","oflagSource":"Junta de Andalucía · andalucia.org","abierta":true,"windK":34,"gustK":56,"windDir":64,"waveH":0.88,"waveDir":91,"temp":32,"code":3}
 {"ts":"2026-08-16T17:56:37.609Z","id":50,"oflag":"verde","oflagSource":"Ayuntamiento de El Ejido","abierta":true,"windK":22,"gustK":42,"windDir":107,"waveH":1.14,"waveDir":105,"temp":33,"code":3}
+{"ts":"2026-08-16T18:06:08.537Z","id":1,"oflag":"verde","oflagSource":"Junta de Andalucía · andalucia.org","abierta":true,"windK":4,"gustK":22,"windDir":149,"waveH":1.16,"waveDir":108,"temp":31,"code":3}
+{"ts":"2026-08-16T18:06:08.537Z","id":3,"oflag":"verde","oflagSource":"Ayuntamiento de El Ejido","abierta":true,"windK":32,"gustK":56,"windDir":97,"waveH":1.12,"waveDir":105,"temp":31,"code":3}
+{"ts":"2026-08-16T18:06:08.537Z","id":4,"oflag":"verde","oflagSource":"Ayuntamiento de El Ejido","abierta":true,"windK":32,"gustK":56,"windDir":97,"waveH":1.12,"waveDir":101,"temp":31,"code":3}
+{"ts":"2026-08-16T18:06:08.537Z","id":5,"oflag":"amarilla","oflagSource":"Junta de Andalucía · andalucia.org","abierta":true,"windK":21,"gustK":45,"windDir":97,"waveH":1.16,"waveDir":101,"temp":32,"code":3}
+{"ts":"2026-08-16T18:06:08.537Z","id":6,"oflag":"amarilla","oflagSource":"Ayuntamiento de Roquetas de Mar","abierta":true,"windK":19,"gustK":40,"windDir":85,"waveH":0.94,"waveDir":104,"temp":34,"code":3}
+{"ts":"2026-08-16T18:06:08.537Z","id":7,"oflag":"verde","oflagSource":"Ayuntamiento de Roquetas de Mar","abierta":true,"windK":21,"gustK":45,"windDir":97,"waveH":1.18,"waveDir":97,"temp":32,"code":3}
+{"ts":"2026-08-16T18:06:08.537Z","id":8,"oflag":"amarilla","oflagSource":"Ayuntamiento de Roquetas de Mar","abierta":true,"windK":21,"gustK":45,"windDir":97,"waveH":1.18,"waveDir":97,"temp":32,"code":3}
+{"ts":"2026-08-16T18:06:08.537Z","id":9,"oflag":"verde","oflagSource":"Junta de Andalucía · andalucia.org","abierta":true,"windK":15,"gustK":36,"windDir":81,"waveH":0.92,"waveDir":102,"temp":36,"code":3}
+{"ts":"2026-08-16T18:06:08.537Z","id":10,"oflag":"verde","oflagSource":"Junta de Andalucía · andalucia.org","abierta":true,"windK":15,"gustK":36,"windDir":81,"waveH":0.92,"waveDir":102,"temp":36,"code":3}
+{"ts":"2026-08-16T18:06:08.537Z","id":11,"oflag":"verde","oflagSource":"Ayuntamiento de Roquetas de Mar","abierta":true,"windK":15,"gustK":36,"windDir":81,"waveH":0.92,"waveDir":102,"temp":36,"code":3}
+{"ts":"2026-08-16T18:06:08.537Z","id":12,"oflag":"amarilla","oflagSource":"Junta de Andalucía · andalucia.org","abierta":true,"windK":21,"gustK":45,"windDir":73,"waveH":0.88,"waveDir":97,"temp":34,"code":3}
+{"ts":"2026-08-16T18:06:08.537Z","id":13,"oflag":"verde","oflagSource":"Junta de Andalucía · andalucia.org","abierta":true,"windK":33,"gustK":55,"windDir":62,"waveH":0.84,"waveDir":90,"temp":32,"code":3}
+{"ts":"2026-08-16T18:06:08.537Z","id":14,"oflag":"verde","oflagSource":"Junta de Andalucía · andalucia.org","abierta":true,"windK":33,"gustK":55,"windDir":62,"waveH":0.84,"waveDir":90,"temp":32,"code":3}
+{"ts":"2026-08-16T18:06:08.537Z","id":15,"oflag":"verde","oflagSource":"Junta de Andalucía · andalucia.org","abierta":true,"windK":30,"gustK":59,"windDir":59,"waveH":1.06,"waveDir":82,"temp":31,"code":3}
+{"ts":"2026-08-16T18:06:08.537Z","id":16,"oflag":"verde","oflagSource":"Junta de Andalucía · andalucia.org","abierta":true,"windK":19,"gustK":40,"windDir":85,"waveH":0.94,"waveDir":104,"temp":34,"code":3}
+{"ts":"2026-08-16T18:06:08.537Z","id":17,"oflag":"amarilla","oflagSource":"Junta de Andalucía · andalucia.org","abierta":true,"windK":30,"gustK":57,"windDir":54,"waveH":0.92,"waveDir":84,"temp":30,"code":3}
+{"ts":"2026-08-16T18:06:08.537Z","id":18,"oflag":"roja","oflagSource":"Junta de Andalucía · andalucia.org","abierta":true,"windK":30,"gustK":57,"windDir":54,"waveH":1.1,"waveDir":78,"temp":30,"code":3}
+{"ts":"2026-08-16T18:06:08.537Z","id":19,"oflag":"amarilla","oflagSource":"Junta de Andalucía · andalucia.org","abierta":true,"windK":30,"gustK":57,"windDir":54,"waveH":1.1,"waveDir":78,"temp":30,"code":3}
+{"ts":"2026-08-16T18:06:08.537Z","id":20,"oflag":"roja","oflagSource":"Junta de Andalucía · andalucia.org","abierta":true,"windK":30,"gustK":57,"windDir":54,"waveH":1.1,"waveDir":78,"temp":30,"code":3}
+{"ts":"2026-08-16T18:06:08.537Z","id":22,"oflag":"amarilla","oflagSource":"Junta de Andalucía · andalucia.org","abierta":true,"windK":31,"gustK":57,"windDir":51,"waveH":1.04,"waveDir":80,"temp":30,"code":3}
+{"ts":"2026-08-16T18:06:08.537Z","id":23,"oflag":"amarilla","oflagSource":"Junta de Andalucía · andalucia.org","abierta":true,"windK":31,"gustK":57,"windDir":51,"waveH":1.04,"waveDir":80,"temp":30,"code":3}
+{"ts":"2026-08-16T18:06:08.537Z","id":24,"oflag":"roja","oflagSource":"Junta de Andalucía · andalucia.org","abierta":true,"windK":27,"gustK":49,"windDir":49,"waveH":1.04,"waveDir":80,"temp":30,"code":3}
+{"ts":"2026-08-16T18:06:08.537Z","id":25,"oflag":"roja","oflagSource":"Junta de Andalucía · andalucia.org","abierta":true,"windK":27,"gustK":49,"windDir":49,"waveH":1.04,"waveDir":80,"temp":30,"code":3}
+{"ts":"2026-08-16T18:06:08.537Z","id":28,"oflag":"roja","oflagSource":"Junta de Andalucía · andalucia.org","abierta":true,"windK":24,"gustK":40,"windDir":50,"waveH":0.98,"waveDir":73,"temp":30,"code":2}
+{"ts":"2026-08-16T18:06:08.537Z","id":29,"oflag":"verde","oflagSource":"Junta de Andalucía · andalucia.org","abierta":true,"windK":24,"gustK":40,"windDir":50,"waveH":0.98,"waveDir":73,"temp":30,"code":2}
+{"ts":"2026-08-16T18:06:08.537Z","id":30,"oflag":"amarilla","oflagSource":"Junta de Andalucía · andalucia.org","abierta":true,"windK":24,"gustK":40,"windDir":50,"waveH":0.98,"waveDir":73,"temp":30,"code":2}
+{"ts":"2026-08-16T18:06:08.537Z","id":31,"oflag":"verde","oflagSource":"Junta de Andalucía · andalucia.org","abierta":true,"windK":19,"gustK":43,"windDir":44,"waveH":0.88,"waveDir":83,"temp":30,"code":3}
+{"ts":"2026-08-16T18:06:08.537Z","id":32,"oflag":"verde","oflagSource":"Junta de Andalucía · andalucia.org","abierta":true,"windK":13,"gustK":25,"windDir":66,"waveH":0.82,"waveDir":88,"temp":30,"code":2}
+{"ts":"2026-08-16T18:06:08.537Z","id":33,"oflag":"verde","oflagSource":"Junta de Andalucía · andalucia.org","abierta":true,"windK":13,"gustK":25,"windDir":66,"waveH":0.82,"waveDir":88,"temp":30,"code":2}
+{"ts":"2026-08-16T18:06:08.537Z","id":34,"oflag":"verde","oflagSource":"Junta de Andalucía · andalucia.org","abierta":true,"windK":15,"gustK":37,"windDir":39,"waveH":0.88,"waveDir":83,"temp":30,"code":3}
+{"ts":"2026-08-16T18:06:08.537Z","id":35,"oflag":"verde","oflagSource":"Junta de Andalucía · andalucia.org","abierta":true,"windK":15,"gustK":37,"windDir":39,"waveH":0.88,"waveDir":83,"temp":30,"code":3}
+{"ts":"2026-08-16T18:06:08.537Z","id":36,"oflag":"roja","oflagSource":"Junta de Andalucía · andalucia.org","abierta":true,"windK":13,"gustK":25,"windDir":66,"waveH":0.82,"waveDir":88,"temp":30,"code":2}
+{"ts":"2026-08-16T18:06:08.537Z","id":37,"oflag":"amarilla","oflagSource":"Ayuntamiento de Vera","abierta":true,"windK":14,"gustK":24,"windDir":79,"waveH":0.84,"waveDir":92,"temp":30,"code":2}
+{"ts":"2026-08-16T18:06:08.537Z","id":38,"oflag":"amarilla","oflagSource":"Junta de Andalucía · andalucia.org","abierta":true,"windK":14,"gustK":24,"windDir":79,"waveH":0.84,"waveDir":92,"temp":30,"code":2}
+{"ts":"2026-08-16T18:06:08.537Z","id":41,"oflag":"verde","oflagSource":"Junta de Andalucía · andalucia.org","abierta":true,"windK":14,"gustK":25,"windDir":90,"waveH":0.84,"waveDir":97,"temp":31,"code":3}
+{"ts":"2026-08-16T18:06:08.537Z","id":43,"oflag":"verde","oflagSource":"Junta de Andalucía · andalucia.org","abierta":true,"windK":14,"gustK":25,"windDir":90,"waveH":0.84,"waveDir":97,"temp":31,"code":3}
+{"ts":"2026-08-16T18:06:08.537Z","id":44,"oflag":"verde","oflagSource":"Junta de Andalucía · andalucia.org","abierta":true,"windK":33,"gustK":55,"windDir":62,"waveH":0.84,"waveDir":90,"temp":32,"code":3}
+{"ts":"2026-08-16T18:06:08.537Z","id":50,"oflag":"verde","oflagSource":"Ayuntamiento de El Ejido","abierta":true,"windK":20,"gustK":42,"windDir":103,"waveH":1.12,"waveDir":105,"temp":33,"code":3}
