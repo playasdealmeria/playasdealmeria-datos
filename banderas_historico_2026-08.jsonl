@@ -27212,3 +27212,10 @@
 {"ts":"2026-08-27T15:36:01.288Z","id":8,"oflag":"amarilla","oflagSource":"Ayuntamiento de Roquetas de Mar","abierta":true,"windK":30,"gustK":62,"windDir":240,"waveH":1.22,"waveDir":241,"temp":29,"code":2}
 {"ts":"2026-08-27T15:36:01.288Z","id":11,"oflag":"amarilla","oflagSource":"Ayuntamiento de Roquetas de Mar","abierta":true,"windK":14,"gustK":36,"windDir":175,"waveH":1.18,"waveDir":227,"temp":28,"code":2}
 {"ts":"2026-08-27T15:36:01.288Z","id":50,"oflag":"amarilla","oflagSource":"Ayuntamiento de El Ejido","abierta":true,"windK":22,"gustK":44,"windDir":264,"waveH":1.02,"waveDir":243,"temp":28,"code":2}
+{"ts":"2026-08-27T16:06:13.854Z","id":3,"oflag":"amarilla","oflagSource":"Ayuntamiento de El Ejido","abierta":true,"windK":33,"gustK":70,"windDir":263,"waveH":1.06,"waveDir":244,"temp":25,"code":2}
+{"ts":"2026-08-27T16:06:13.854Z","id":4,"oflag":"roja","oflagSource":"Ayuntamiento de El Ejido","abierta":true,"windK":33,"gustK":70,"windDir":263,"waveH":1.1,"waveDir":243,"temp":25,"code":2}
+{"ts":"2026-08-27T16:06:13.854Z","id":6,"oflag":"verde","oflagSource":"Ayuntamiento de Roquetas de Mar","abierta":true,"windK":23,"gustK":54,"windDir":236,"waveH":1.02,"waveDir":229,"temp":29,"code":3}
+{"ts":"2026-08-27T16:06:13.854Z","id":7,"oflag":"verde","oflagSource":"Ayuntamiento de Roquetas de Mar","abierta":true,"windK":30,"gustK":64,"windDir":246,"waveH":1.26,"waveDir":242,"temp":28,"code":2}
+{"ts":"2026-08-27T16:06:13.854Z","id":8,"oflag":"amarilla","oflagSource":"Ayuntamiento de Roquetas de Mar","abierta":true,"windK":30,"gustK":64,"windDir":246,"waveH":1.26,"waveDir":242,"temp":28,"code":2}
+{"ts":"2026-08-27T16:06:13.854Z","id":11,"oflag":"amarilla","oflagSource":"Ayuntamiento de Roquetas de Mar","abierta":true,"windK":11,"gustK":52,"windDir":164,"waveH":1.22,"waveDir":228,"temp":28,"code":3}
+{"ts":"2026-08-27T16:06:13.854Z","id":50,"oflag":"amarilla","oflagSource":"Ayuntamiento de El Ejido","abierta":true,"windK":23,"gustK":44,"windDir":266,"waveH":1.06,"waveDir":244,"temp":27,"code":1}
