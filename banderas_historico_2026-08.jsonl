@@ -27149,3 +27149,10 @@
 {"ts":"2026-08-27T11:35:50.157Z","id":8,"oflag":"amarilla","oflagSource":"Ayuntamiento de Roquetas de Mar","abierta":true,"windK":28,"gustK":53,"windDir":238,"waveH":1.12,"waveDir":237,"temp":28,"code":1}
 {"ts":"2026-08-27T11:35:50.157Z","id":11,"oflag":"amarilla","oflagSource":"Ayuntamiento de Roquetas de Mar","abierta":true,"windK":15,"gustK":29,"windDir":172,"waveH":0.96,"waveDir":224,"temp":27,"code":1}
 {"ts":"2026-08-27T11:35:50.157Z","id":50,"oflag":"amarilla","oflagSource":"Ayuntamiento de El Ejido","abierta":true,"windK":21,"gustK":39,"windDir":257,"waveH":0.96,"waveDir":238,"temp":27,"code":1}
+{"ts":"2026-08-27T12:05:52.942Z","id":3,"oflag":"amarilla","oflagSource":"Ayuntamiento de El Ejido","abierta":true,"windK":30,"gustK":51,"windDir":254,"waveH":0.96,"waveDir":239,"temp":25,"code":1}
+{"ts":"2026-08-27T12:05:52.942Z","id":4,"oflag":"roja","oflagSource":"Ayuntamiento de El Ejido","abierta":true,"windK":30,"gustK":51,"windDir":254,"waveH":1.02,"waveDir":238,"temp":25,"code":1}
+{"ts":"2026-08-27T12:05:52.942Z","id":6,"oflag":"verde","oflagSource":"Ayuntamiento de Roquetas de Mar","abierta":true,"windK":26,"gustK":48,"windDir":228,"waveH":0.92,"waveDir":224,"temp":29,"code":1}
+{"ts":"2026-08-27T12:05:52.942Z","id":7,"oflag":"verde","oflagSource":"Ayuntamiento de Roquetas de Mar","abierta":true,"windK":31,"gustK":58,"windDir":241,"waveH":1.14,"waveDir":237,"temp":28,"code":1}
+{"ts":"2026-08-27T12:05:52.942Z","id":8,"oflag":"amarilla","oflagSource":"Ayuntamiento de Roquetas de Mar","abierta":true,"windK":31,"gustK":58,"windDir":241,"waveH":1.14,"waveDir":237,"temp":29,"code":1}
+{"ts":"2026-08-27T12:05:52.942Z","id":11,"oflag":"amarilla","oflagSource":"Ayuntamiento de Roquetas de Mar","abierta":true,"windK":19,"gustK":36,"windDir":181,"waveH":1.04,"waveDir":224,"temp":29,"code":1}
+{"ts":"2026-08-27T12:05:52.942Z","id":50,"oflag":"amarilla","oflagSource":"Ayuntamiento de El Ejido","abierta":true,"windK":23,"gustK":41,"windDir":259,"waveH":0.96,"waveDir":239,"temp":27,"code":1}
