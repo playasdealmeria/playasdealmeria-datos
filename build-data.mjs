@@ -70,6 +70,23 @@ function normalizeMarineResponse(mar){
       wave_models:dt.map((_,i)=>marineMembers(d,i,'wave_height_max','wave_direction_dominant',null))}};
 }
 function dayLabel(iso,i){if(i===0)return 'Hoy';if(i===1)return 'Mañana';const d=new Date(iso);return ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'][d.getDay()];}
+/* v91.382: el agua es un modelo superficial con historia y vigencia */
+function marineTimeMs382(value){const m=String(value||'').match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);return m?Date.UTC(+m[1],+m[2]-1,+m[3],+m[4],+m[5]):NaN;}
+function marineWaterTrend382(mar){
+  const h=mar&&mar.hourly||{},times=Array.isArray(h.time)?h.time:[],values=Array.isArray(h.sea_surface_temperature)?h.sea_surface_temperature:[];
+  const raw=mar&&mar.current&&mar.current.sea_surface_temperature,time=mar&&mar.current&&mar.current.time;
+  const current=raw!=null?Number(raw):NaN,now=marineTimeMs382(time);
+  const out={kind:'model',source:'Météo-France SST via Open-Meteo Marine',status:Number.isFinite(current)?'current':'unavailable',current:Number.isFinite(current)?Math.round(current*10)/10:null,time:time||null,grid_lat:Number.isFinite(Number(mar&&mar.latitude))?Number(mar.latitude):null,grid_lng:Number.isFinite(Number(mar&&mar.longitude))?Number(mar.longitude):null,resolution_km:8,native_hours:6,update_hours:24,change_72h:null,change_7d:null};
+  if(!Number.isFinite(current)||!Number.isFinite(now))return out;
+  function previous(hours){const target=now-hours*36e5;let best=null,gap=Infinity;times.forEach((t,i)=>{const ms=marineTimeMs382(t),rawValue=values[i],v=rawValue!=null?Number(rawValue):NaN,d=Math.abs(ms-target);if(Number.isFinite(ms)&&Number.isFinite(v)&&d<gap){best=v;gap=d;}});return gap<=4*36e5?best:null;}
+  const p72=previous(72),p7=previous(168);
+  if(p72!=null)out.change_72h=Math.round((current-p72)*10)/10;
+  if(p7!=null)out.change_7d=Math.round((current-p7)*10)/10;
+  out.rapid=out.change_72h!=null&&Math.abs(out.change_72h)>=2;
+  out.recent=out.change_7d!=null&&Math.abs(out.change_7d)>=3;
+  return out;
+}
+function marineDailyAt382(block,date,name){if(!block||!Array.isArray(block.time))return null;const i=block.time.indexOf(date);return i>=0&&Array.isArray(block[name])?block[name][i]:null;}
 
 function summarizePart(dateStr,startHour,endHour,wh,mh){
   if(!wh||!Array.isArray(wh.time))return null;
@@ -443,17 +460,18 @@ __MUNI_OFI__.push(__VERA__);
 async function scenariosAt(lat,lng){
   const u=`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m&hourly=temperature_2m,relative_humidity_2m,precipitation,precipitation_probability,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m&daily=weather_code,temperature_2m_max,temperature_2m_min,wind_speed_10m_max,wind_gusts_10m_max,wind_direction_10m_dominant,uv_index_max,sunrise,sunset&timezone=auto&forecast_days=${FORECAST_DAYS}&wind_speed_unit=kmh`;
   const wx=await getJSON(u);
-  let sst=null,marD=null,marH=null; // datos v91.14-B: sin dato marino -> null (se arrastra el ultimo conocido en main)
+  let sst=null,marD=null,marH=null,water=null; // v91.382: modelo actual, tendencia y vigencia separadas
   try{
-    const mar=normalizeMarineResponse(await getJSON(`https://marine-api.open-meteo.com/v1/marine?latitude=${lat}&longitude=${lng}&current=sea_surface_temperature&hourly=wave_height,wave_direction,wave_period,sea_surface_temperature&daily=wave_height_max,wave_direction_dominant&models=${MARINE_MODELS}&timezone=auto&forecast_days=${FORECAST_DAYS}`));
+    const mar=normalizeMarineResponse(await getJSON(`https://marine-api.open-meteo.com/v1/marine?latitude=${lat}&longitude=${lng}&current=sea_surface_temperature&hourly=wave_height,wave_direction,wave_period,sea_surface_temperature&daily=wave_height_max,wave_direction_dominant&models=${MARINE_MODELS}&timezone=auto&past_days=7&forecast_days=${FORECAST_DAYS}&cell_selection=sea`));
+    water=marineWaterTrend382(mar);
     if(mar.current&&mar.current.sea_surface_temperature!=null)sst=Math.round(mar.current.sea_surface_temperature);
     if(mar.daily)marD=mar.daily;
     if(mar.hourly)marH=mar.hourly;
-  }catch(e){/* sin marine: se usa sst por defecto */}
+  }catch(e){/* sin marine: main puede conservar el último valor, marcándolo como anterior */}
   const cur=wx.current||{},d=wx.daily||{},out=[];
-  const wh=i=>marD&&marD.wave_height_max?marD.wave_height_max[i]:null;
-  const wd=i=>marD&&marD.wave_direction_dominant?marD.wave_direction_dominant[i]:null;
-  const waveModels=i=>marD&&marD.wave_models&&Array.isArray(marD.wave_models[i])?marD.wave_models[i]:[];
+  const wh=date=>marineDailyAt382(marD,date,'wave_height_max');
+  const wd=date=>marineDailyAt382(marD,date,'wave_direction_dominant');
+  const waveModels=date=>{const i=marD&&Array.isArray(marD.time)?marD.time.indexOf(date):-1;return i>=0&&Array.isArray(marD.wave_models&&marD.wave_models[i])?marD.wave_models[i]:[];};
   /* v91.283/v91.378: el agua de CADA dia, no la lectura de ahora repetida siete veces.
      Se promedia 07:00-22:00, la misma jornada que usan las partes del dia
      (summarizePart: mañana 07-14, tarde 14-22). La Marine API no tiene agregado diario
@@ -505,9 +523,9 @@ async function scenariosAt(lat,lng){
       temp:(()=>{const _t=d.temperature_2m_max?.[i] ?? (i===0 ? cur.temperature_2m : null) ?? airMax(dateStr);return _t!=null?Math.round(_t):null;})(),
       min:(()=>{const _m=d.temperature_2m_min?.[i] ?? airMin(dateStr);return _m!=null?Math.round(_m):null;})(), // v91.283: igual que temp
       agua:sstFor(dateStr), // v91.283: el agua de ESE dia
-      waveH:wh(i),
-      waveDir:wd(i),
-      waveModels:waveModels(i),
+      waveH:wh(dateStr),
+      waveDir:wd(dateStr),
+      waveModels:waveModels(dateStr),
       wavePeriod:__wavePeriodDay[dateStr]??null,
       estado:e.estado,
       estadoTxt:e.estadoTxt,
@@ -544,7 +562,7 @@ async function scenariosAt(lat,lng){
     hourly.waveDir.push(marineByTime[t]?.waveDir!=null?Math.round(marineByTime[t].waveDir):null); // datos v91.14-B: sin fabricar 180
   });
   if(__ANCHOR_ON&&__ANCHOR_BIAS){ try{ applyWindAnchor(hourly,__ANCHOR_BIAS,__ANCHOR_BIAS.nowHour,ANCHOR_CFG); }catch(e){} }
-  return {days:out,hourly};
+  return {days:out,hourly,water};
 }
 
 async function airAt(lat,lng){
@@ -1159,11 +1177,12 @@ async function main(){
   await mapLimit(catalog,CONCURRENCY,async b=>{
     const [sc,aq]=await Promise.all([scenariosAt(b.lat,b.lng),airAt(b.lat,b.lng)]);
     {const _id=String(b.id);const _off=Object.assign(sc,__OFI__[_id]||{});for(const _src of __MUNI_OFI__){const _m=_src[_id];if(_m&&_m.oflag){for(const _k of ['oflag','oflagSource','ofiAt','oflagCheckedAt','oflagSourceAt','oflagSourceDay','oflagFreshness']){if(Object.prototype.hasOwnProperty.call(_m,_k))_off[_k]=_m[_k];else delete _off[_k];}break;}}beaches[b.id]=_off;} // v91.381: la cascada conserva procedencia y evidencia completas
-    { const __bo=beaches[b.id]; // datos v91.14-B: arrastrar el último agua conocido si la Marine API falló
+    { const __bo=beaches[b.id]; // v91.382: el valor anterior nunca se presenta como modelo recién actualizado
       if(__bo&&Array.isArray(__bo.days)&&__bo.days.some(x=>x&&x.agua==null)){
-        const __pd=prevBeaches[b.id]&&Array.isArray(prevBeaches[b.id].days)?prevBeaches[b.id].days:null;
-        const __last=__pd?((__pd.find(x=>x&&x.agua!=null)||{}).agua):null;
-        __bo.days.forEach((day,di)=>{ if(day&&day.agua==null){ const pa=(__pd&&__pd[di]&&__pd[di].agua!=null)?__pd[di].agua:__last; if(pa!=null)day.agua=pa; } });
+        const __prev=prevBeaches[b.id]||{},__pd=Array.isArray(__prev.days)?__prev.days:null;
+        const __last=__pd?((__pd.find(x=>x&&x.agua!=null)||{}).agua):null;let __carried=false;
+        __bo.days.forEach((day,di)=>{ if(day&&day.agua==null){ const pa=(__pd&&__pd[di]&&__pd[di].agua!=null)?__pd[di].agua:__last; if(pa!=null){day.agua=pa;__carried=true;} } });
+        if(__carried){const pw=__prev.water||{};__bo.water={kind:'model',source:pw.source||'Météo-France SST via Open-Meteo Marine',status:'carried',current:__bo.days[0]&&__bo.days[0].agua!=null?__bo.days[0].agua:(pw.current??null),time:pw.time||null,grid_lat:pw.grid_lat??null,grid_lng:pw.grid_lng??null,resolution_km:8,native_hours:6,update_hours:24,change_72h:null,change_7d:null,rapid:false,recent:false};}
       } }
     air[b.id]=aq;
     process.stdout.write('.');
