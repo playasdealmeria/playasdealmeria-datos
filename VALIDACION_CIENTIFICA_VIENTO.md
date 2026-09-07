@@ -22,6 +22,8 @@ node --test
 node validar-rachas.mjs
 node analizar-rachas.mjs
 node analizar-rachas.mjs --json
+node analizar-calibracion-sombra.mjs --holdout-from YYYY-MM-DD
+node analizar-calibracion-sombra.mjs --holdout-from YYYY-MM-DD --json
 ```
 
 No se añade ninguna dependencia: todo usa módulos incluidos en Node.
@@ -29,6 +31,8 @@ No se añade ninguna dependencia: todo usa módulos incluidos en Node.
 ## Criterios antes de tocar el baremo
 
 Las métricas se publican por estación y horizonte. Los indicadores de cobertura (`días`, `pares` y eventos observados de racha ≥40 km/h) son advertencias de tamaño muestral, no una declaración automática de fiabilidad.
+
+El analizador compara además los cortes de 17, 23 y 40 km/h, la coincidencia de sus cuatro tramos y los episodios fuertes independientes. Un episodio agrupa observaciones de una misma estación separadas por tres horas o menos y elimina la repetición de la misma observación en varios horizontes. Estas métricas describen errores y falsas alarmas; no aplican una corrección ni cambian el baremo.
 
 Antes de proponer una corrección deben cumplirse, como mínimo:
 
@@ -48,3 +52,18 @@ Antes de proponer una corrección deben cumplirse, como mínimo:
 - **Open-Meteo Single Runs**: archivo de pasadas individuales. Permite backtesting sin look-ahead desde abril de 2026 para la mayoría de modelos y desde marzo de 2024 para ECMWF IFS. Se evaluará como piloto separado para no confundir un modelo identificado con el `best_match` que ve el usuario.
 
 La sustitución de una fuente solo se planteará después de una comparación paralela y reproducible contra observaciones.
+
+## Calibración en sombra
+
+`analizar-calibracion-sombra.mjs` no modifica el feed ni el baremo. Aprende una
+corrección aditiva únicamente con el bloque anterior a `--holdout-from` y compara
+el resultado en el bloque posterior. Publica grupos por estación y horizonte y,
+como diagnóstico exploratorio, por sector de la dirección **prevista**. No usa la
+dirección observada para decidir el grupo porque esa información aún no existe al
+emitir la previsión.
+
+Los grupos pequeños se conservan para mostrar la cobertura real. Ninguna mejora de
+un grupo aislado se considera autorización automática: deben revisarse episodios,
+estabilidad temporal, MAE/RMSE, falsas alarmas y coincidencia por tramos. Una futura
+transferencia a playas debe separar el error de la fuente de la transformación
+local de orientación y abrigo y requiere validación espacial independiente.

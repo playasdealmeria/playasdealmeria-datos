@@ -129,6 +129,89 @@ function variableMetrics(pairs,field){
   };
 }
 
+const GUST_THRESHOLDS=[17,23,40];
+function thresholdMetrics(pairs,threshold){
+  let hits=0,misses=0,falseAlarms=0,trueNegatives=0;
+  for(const pair of pairs){
+    const observed=Number(pair.observation.wind_gust_10m_kmh)>=threshold;
+    const forecast=Number(pair.forecast.wind_gust_10m_kmh)>=threshold;
+    if(observed&&forecast) hits++;
+    else if(observed) misses++;
+    else if(forecast) falseAlarms++;
+    else trueNegatives++;
+  }
+  const recallDen=hits+misses,precisionDen=hits+falseAlarms;
+  return {
+    threshold_kmh:threshold,
+    observed:hits+misses,
+    forecast:hits+falseAlarms,
+    hits,misses,
+    false_alarms:falseAlarms,
+    true_negatives:trueNegatives,
+    recall:recallDen?round(hits/recallDen,3):null,
+    precision:precisionDen?round(hits/precisionDen,3):null
+  };
+}
+function gustBand(value){
+  const x=Number(value);
+  return x>=40?3:x>=23?2:x>=17?1:0;
+}
+function gustBandMetrics(pairs){
+  let exact=0,under=0,over=0,underBy2=0,overBy2=0;
+  for(const pair of pairs){
+    const observed=gustBand(pair.observation.wind_gust_10m_kmh);
+    const forecast=gustBand(pair.forecast.wind_gust_10m_kmh);
+    if(observed===forecast) exact++;
+    else if(forecast<observed){under++;if(observed-forecast>=2)underBy2++;}
+    else{over++;if(forecast-observed>=2)overBy2++;}
+  }
+  return {
+    exact,
+    exact_rate:round(exact/pairs.length,3),
+    under,over,
+    under_by_2_or_more:underBy2,
+    over_by_2_or_more:overBy2
+  };
+}
+
+export function strongEpisodes(pairs,{threshold=40,maxGapHours=3}={}){
+  if(!finite(threshold)||!finite(maxGapHours)||Number(maxGapHours)<0){
+    throw new Error('parámetros de episodio inválidos');
+  }
+  const unique=new Map();
+  for(const pair of pairs){
+    const station=String(pair.station?.id||'');
+    const time=String(pair.valid_time_utc||'');
+    const gust=Number(pair.observation?.wind_gust_10m_kmh);
+    if(!station||!Number.isFinite(Date.parse(time))||!Number.isFinite(gust)) continue;
+    unique.set(station+'|'+time,{station,time,gust});
+  }
+  const groups=new Map();
+  for(const row of unique.values()){
+    if(row.gust<Number(threshold)) continue;
+    if(!groups.has(row.station)) groups.set(row.station,[]);
+    groups.get(row.station).push(row);
+  }
+  const episodes=[];
+  for(const [station,rows] of groups){
+    rows.sort((a,b)=>a.time.localeCompare(b.time));
+    let current=null;
+    for(const row of rows){
+      const ms=Date.parse(row.time);
+      if(!current||ms-current.last_ms>Number(maxGapHours)*3600000){
+        current={station,start:row.time,end:row.time,slots:1,max_gust_kmh:row.gust,last_ms:ms};
+        episodes.push(current);
+      }else{
+        current.end=row.time;
+        current.slots++;
+        current.max_gust_kmh=Math.max(current.max_gust_kmh,row.gust);
+        current.last_ms=ms;
+      }
+    }
+  }
+  return episodes.map(({last_ms,...episode})=>episode);
+}
+
 export function computeMetrics(pairs){
   if(!pairs.length) return { n:0, days:0 };
   const days=new Set(pairs.map(p=>p.valid_time_utc.slice(0,10)));
@@ -139,6 +222,7 @@ export function computeMetrics(pairs){
   const falseAlarms=pairs.filter(p=>Number(p.observation.wind_gust_10m_kmh)<40 && Number(p.forecast.wind_gust_10m_kmh)>=40).length;
   const severeMisses=pairs.filter(p=>Number(p.observation.wind_gust_10m_kmh)>=40 && Number(p.forecast.wind_gust_10m_kmh)<25).length;
   const severeFalseAlarms=pairs.filter(p=>Number(p.observation.wind_gust_10m_kmh)<25 && Number(p.forecast.wind_gust_10m_kmh)>=40).length;
+  const episodes=strongEpisodes(pairs);
   return {
     n:pairs.length,
     days:days.size,
@@ -156,10 +240,18 @@ export function computeMetrics(pairs){
       severe_misses_below_25:severeMisses,
       severe_false_alarms_observed_below_25:severeFalseAlarms
     },
+    thresholds:GUST_THRESHOLDS.map(threshold=>thresholdMetrics(pairs,threshold)),
+    gust_bands:gustBandMetrics(pairs),
+    strong_observation_episodes:{
+      threshold_kmh:40,
+      max_gap_hours:3,
+      count:episodes.length
+    },
     coverage_flags:{
       fewer_than_14_days:days.size<14,
       fewer_than_100_pairs:pairs.length<100,
-      fewer_than_10_observed_strong_events:strongObs<10
+      fewer_than_10_observed_strong_events:strongObs<10,
+      fewer_than_10_independent_strong_episodes:episodes.length<10
     }
   };
 }
@@ -221,6 +313,7 @@ function printHuman(report,pairs,files){
     console.log(`  ${row.model_selection} · horizonte nominal ${row.nominal_lead_hours} h`);
     console.log(`    n=${m.n} · días=${m.days} · racha bias=${m.gust.bias_kmh} · MAE=${m.gust.mae_kmh} · RMSE=${m.gust.rmse_kmh} km/h`);
     console.log(`    eventos ≥40: observados=${m.events.observed} · aciertos=${m.events.hits} · fallos=${m.events.misses} · falsas alarmas=${m.events.false_alarms}`);
+    console.log(`    episodios observados independientes ≥40: ${m.strong_observation_episodes.count}`);
     const active=Object.entries(m.coverage_flags).filter(([,v])=>v).map(([k])=>k);
     if(active.length) console.log('    cobertura insuficiente: '+active.join(', '));
   }
@@ -230,7 +323,7 @@ const isMain=process.argv[1] && resolve(process.argv[1])===fileURLToPath(import.
 if(isMain){
   try{
     const json=process.argv.includes('--json');
-    const args=process.argv.slice(2).filter(x=>x!=='--json').map(resolve);
+    const args=process.argv.slice(2).filter(x=>x!=='--json').map(file => resolve(file));
     const files=args.length?args:defaultFiles();
     if(!files.length){
       console.log('Sin archivos viento_validacion_v2_*.jsonl todavía.');
