@@ -888,3 +888,6 @@
 {"ts":"2026-09-08T10:36:05.643Z","id":3,"oflag":"verde","oflagSource":"Ayuntamiento de El Ejido","abierta":true,"windK":17,"gustK":28,"windDir":255,"waveH":0.12,"waveDir":105,"temp":25,"code":2}
 {"ts":"2026-09-08T10:36:05.643Z","id":4,"oflag":"verde","oflagSource":"Ayuntamiento de El Ejido","abierta":true,"windK":17,"gustK":28,"windDir":255,"waveH":0.12,"waveDir":100,"temp":25,"code":2}
 {"ts":"2026-09-08T10:36:05.643Z","id":50,"oflag":"verde","oflagSource":"Ayuntamiento de El Ejido","abierta":true,"windK":11,"gustK":19,"windDir":247,"waveH":0.12,"waveDir":105,"temp":26,"code":2}
+{"ts":"2026-09-08T11:06:06.150Z","id":3,"oflag":"verde","oflagSource":"Ayuntamiento de El Ejido","abierta":true,"windK":18,"gustK":30,"windDir":253,"waveH":0.14,"waveDir":110,"temp":26,"code":2}
+{"ts":"2026-09-08T11:06:06.150Z","id":4,"oflag":"verde","oflagSource":"Ayuntamiento de El Ejido","abierta":true,"windK":18,"gustK":30,"windDir":253,"waveH":0.14,"waveDir":105,"temp":26,"code":2}
+{"ts":"2026-09-08T11:06:06.150Z","id":50,"oflag":"verde","oflagSource":"Ayuntamiento de El Ejido","abierta":true,"windK":12,"gustK":21,"windDir":247,"waveH":0.14,"waveDir":110,"temp":27,"code":2}
