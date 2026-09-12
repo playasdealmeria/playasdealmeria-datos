@@ -1448,3 +1448,10 @@
 {"ts":"2026-09-12T15:35:54.392Z","id":8,"oflag":"verde","oflagSource":"Ayuntamiento de Roquetas de Mar","abierta":true,"windK":28,"gustK":55,"windDir":95,"waveH":1.14,"waveDir":100,"temp":29,"code":0}
 {"ts":"2026-09-12T15:35:54.392Z","id":11,"oflag":"verde","oflagSource":"Ayuntamiento de Roquetas de Mar","abierta":true,"windK":22,"gustK":43,"windDir":96,"waveH":0.88,"waveDir":105,"temp":31,"code":0}
 {"ts":"2026-09-12T15:35:54.392Z","id":50,"oflag":"verde","oflagSource":"Ayuntamiento de El Ejido","abierta":true,"windK":30,"gustK":58,"windDir":106,"waveH":1.1,"waveDir":107,"temp":29,"code":0}
+{"ts":"2026-09-12T16:06:17.693Z","id":3,"oflag":"verde","oflagSource":"Ayuntamiento de El Ejido","abierta":true,"windK":32,"gustK":55,"windDir":98,"waveH":1.12,"waveDir":106,"temp":27,"code":0}
+{"ts":"2026-09-12T16:06:17.693Z","id":4,"oflag":"verde","oflagSource":"Ayuntamiento de El Ejido","abierta":true,"windK":32,"gustK":55,"windDir":98,"waveH":1.12,"waveDir":103,"temp":27,"code":0}
+{"ts":"2026-09-12T16:06:17.693Z","id":6,"oflag":"verde","oflagSource":"Ayuntamiento de Roquetas de Mar","abierta":true,"windK":27,"gustK":45,"windDir":99,"waveH":0.88,"waveDir":106,"temp":28,"code":0}
+{"ts":"2026-09-12T16:06:17.693Z","id":7,"oflag":"verde","oflagSource":"Ayuntamiento de Roquetas de Mar","abierta":true,"windK":25,"gustK":49,"windDir":95,"waveH":1.14,"waveDir":99,"temp":27,"code":0}
+{"ts":"2026-09-12T16:06:17.693Z","id":8,"oflag":"verde","oflagSource":"Ayuntamiento de Roquetas de Mar","abierta":true,"windK":25,"gustK":49,"windDir":95,"waveH":1.14,"waveDir":99,"temp":27,"code":0}
+{"ts":"2026-09-12T16:06:17.693Z","id":11,"oflag":"verde","oflagSource":"Ayuntamiento de Roquetas de Mar","abierta":true,"windK":21,"gustK":41,"windDir":100,"waveH":0.88,"waveDir":104,"temp":30,"code":0}
+{"ts":"2026-09-12T16:06:17.693Z","id":50,"oflag":"verde","oflagSource":"Ayuntamiento de El Ejido","abierta":true,"windK":27,"gustK":49,"windDir":106,"waveH":1.12,"waveDir":106,"temp":28,"code":0}
