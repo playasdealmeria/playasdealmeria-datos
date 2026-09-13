@@ -13,6 +13,7 @@
  */
 import { readFile, writeFile, appendFile } from 'node:fs/promises';
 import { gunzipSync, unzipSync } from 'node:zlib';
+import { flagIsCurrent, roquetasFlag, completeWorstFlag, mergeOfficialFlag, flagMetrics } from './flag-integrity.mjs'; // v91.386
 import https from 'node:https'; // v91.11 datos: TLS 1.2 para la Junta
 import { applyWindAnchor, fetchAnchorBias, ANCHOR_CFG } from './anclar-viento.mjs'; // parche a (email El Zapillo): ancla de observacion
 const __ANCHOR_ON=process.env.WIND_ANCHOR==='1'; let __ANCHOR_BIAS=null;
@@ -183,7 +184,7 @@ const JUNTA_MAP={
 const JUNTA_FLAG={BAPLAVERDE:'verde',BAPLAAMARILLA:'amarilla',BAPLAROJA:'roja',BAPLANEGRA:'negra'};
 const JUNTA_SEA={ASPPLATRANQ:'tranquilo',ASPPLAOLEAMODE:'moderado',ASPPLAOLEAFUER:'fuerte',ASPPLAVENTO:'ventoso'};
 /* v91.380: fuentes oficiales con frescura demostrable */
-const JUNTA_FLAG_QUARANTINE = new Set(['26']); // Cala San Pedro: 446/446 rojas sin timestamp propio ni respaldo municipal.
+const JUNTA_FLAG_QUARANTINE = new Set(['26']); // Incidencia histórica: rojo persistente. Revisión 2026-09-12: amarillo sin fecha; cuarentena mantenida por falta de vigencia acreditada.
 const JUNTA_SEA_OPERATIONAL = false; // 46/46 series sin un solo cambio: se observa, pero no se publica como estado actual.
 // [label ES, código estable]. El código viaja al JSON para que la web traduzca sin comparar cadenas.
 const JUNTA_OCU={
@@ -355,18 +356,26 @@ async function fetchEjidoOficial(){
     if(!Array.isArray(arr)) throw new Error('respuesta no es un array');
     const byId={}; for(const b of arr) byId[b.id]=b;
     for(const [ourId,subIds] of Object.entries(EJIDO_MAP)){
-      let flag=null;const timestamps=[];
+      let flag=null;const timestamps=[];const service=[];
       for(const sid of subIds){
         const sb=byId[sid];if(!sb){flag=null;break;}
         const f=ejidoNorm(sb.bandera),at=madridMunicipalTimestamp(sb.actualizado);if(!EJIDO_SEV[f]||!at){flag=null;break;}
         flag=flag?ejidoWorse(flag,f):f;timestamps.push(Date.parse(at));
+        service.push(sb.isSocorrismo===0||sb.isSocorrismo==='0'?false:sb.isSocorrismo===1||sb.isSocorrismo==='1'?true:null);
 
       }
-      if(flag&&timestamps.length===subIds.length){const sourceAt=new Date(Math.min(...timestamps)).toISOString();out[ourId]={oflag:flag,oflagSource:EJIDO_ATTR,ofiAt:sourceAt,oflagCheckedAt:new Date().toISOString(),oflagSourceAt:sourceAt,oflagSourceDay:madridDayISO(sourceAt),oflagFreshness:'source-time'};meta.count++;meta.count_flags++;meta.count_flags_verified=(meta.count_flags_verified||0)+1;}
+      if(flag&&timestamps.length===subIds.length){
+        const sourceAt=new Date(Math.min(...timestamps)).toISOString(),checkedAt=new Date().toISOString();
+        const serviceActive=service.includes(false)?false:service.every(value=>value===true)?true:null;
+        const record={oflag:flag,oflagSource:EJIDO_ATTR,ofiAt:null,oflagCheckedAt:checkedAt,oflagSourceAt:sourceAt,oflagSourceDay:madridDayISO(sourceAt),oflagFreshness:serviceActive===false?'unknown':'source-time',oflagMunicipality:'El Ejido',oflagSectorIds:subIds,oflagServiceActive:serviceActive};
+        if(flagIsCurrent(record))record.ofiAt=sourceAt;
+        out[ourId]=record;meta.count++;
+      }
     }
   }catch(e){ meta.errors.push(String(e&&e.message||e).slice(0,120)); console.log('! El Ejido oficial: '+meta.errors[0]); }
   meta.elapsed_ms=Date.now()-t0;
-  console.log('· Datos oficiales El Ejido: '+meta.count_flags+'/'+meta.requested+' colores publicados · '+meta.count_flags_verified+' vigencias acreditadas por timestamp municipal en '+meta.elapsed_ms+' ms');
+  Object.assign(meta,flagMetrics(out));
+  console.log('· Datos oficiales El Ejido: '+meta.count_flags+'/'+meta.requested+' colores publicados · '+meta.count_flags_timestamped+' con timestamp · '+meta.count_flags_verified+' vigencias acreditadas en '+meta.elapsed_ms+' ms');
   return {data:out, meta};
 }
 const __EJIDO_RES__=await fetchEjidoOficial();
@@ -386,9 +395,9 @@ const ROQUETAS_ATTR = 'Ayuntamiento de Roquetas de Mar';
 const ROQUETAS_TIMEOUT_MS = Math.max(1000, Number(process.env.ROQUETAS_TIMEOUT_MS || 6000));
 // nuestro_id <- [slugs de tooltip en la web de Roquetas] (muchos-a-uno, PEOR bandera).
 // #8 combina Playa Serena + Urbanización Roquetas. bajadilla/bajos/cerrillos/salinas no tienen ficha nuestra.
-const ROQUETAS_MAP = { '6':['aguadulce'], '7':['romanilla'], '8':['playa_serena','urbanizacion_roquetas'], '11':['ventilla'] };
+const ROQUETAS_MAP = { '6':['aguadulce'], '7':['romanilla'], '8':['playa_serena','urbanizacion_roquetas'] }; // Ventilla no tiene ficha; #11 es Nueva Almería.
 function madridDayISO(value){const d=value instanceof Date?value:new Date(value);if(Number.isNaN(d.getTime()))return null;const p={};for(const x of new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Madrid',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(d))p[x.type]=x.value;return p.year+'-'+p.month+'-'+p.day;}
-function roquetasSourceDay(html){const text=String(html||'').replace(/&iacute;|&#237;/gi,'i').replace(/<[^>]+>/g,' ').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ');const m=text.match(/para el dia de hoy\s*[,.:;-]?\s*(\d{1,2})\/(\d{1,2})\/(\d{4})/i);if(!m)return null;return m[3]+'-'+String(m[2]).padStart(2,'0')+'-'+String(m[1]).padStart(2,'0');}
+function roquetasSourceDay(){return null;} // v91.386: la fecha de AEMET no acredita la revisión de banderas.
 async function fetchRoquetasOficial(){
   const meta={enabled:ROQUETAS_OFICIAL, source:ROQUETAS_ATTR, requested:Object.keys(ROQUETAS_MAP).length, count:0, count_flags:0, count_flags_verified:0, source_day:null, date_verified:false, elapsed_ms:0, errors:[]};
   if(!ROQUETAS_OFICIAL){ console.log('· Datos oficiales Roquetas: DESACTIVADOS (ROQUETAS_OFICIAL=false)'); return {data:{},meta}; }
@@ -398,16 +407,17 @@ async function fetchRoquetasOficial(){
     let html;
     try{ html=await fetch(ROQUETAS_URL,{headers:{'User-Agent':JUNTA_UA,'Accept':'text/html'},signal:ctrl.signal}).then(r=>{if(!r.ok)throw new Error('HTTP '+r.status);return r.text();}); }
     finally{ clearTimeout(to); }
-    const checkedAt=new Date().toISOString(),sourceDay=roquetasSourceDay(html),dateVerified=sourceDay===madridDayISO(checkedAt);
+    const checkedAt=new Date().toISOString(),sourceDay=roquetasSourceDay();
+    const dateVerified=false; // Sin fecha propia de bandera confirmada por el municipio.
     meta.source_day=sourceDay;meta.date_verified=dateVerified;
     if(!sourceDay)meta.errors.push('la página municipal no acredita la fecha del estado');
     else if(!dateVerified)meta.errors.push('la página municipal corresponde a '+sourceDay+', no a hoy');
     // bandera del bloque id="tooltip_{slug}", acotada hasta el siguiente tooltip (no contamina con leyenda ni vecinos)
-    const flagAt=slug=>{ const i=html.indexOf('id="tooltip_'+slug+'"'); if(i<0) return null; const j=html.indexOf('tooltip_', i+12); const seg=html.slice(i, j<0? i+1500 : j); const m=seg.match(/bandera-(verde|amarilla|roja|negra)/); return m?m[1]:null; };
+    const flagAt=slug=>roquetasFlag(html,slug);
     for(const [ourId,slugs] of Object.entries(ROQUETAS_MAP)){
-      let flag=null;
-      for(const s of slugs){ const f=flagAt(s); if(!f||!EJIDO_SEV[f]) continue; flag=flag?ejidoWorse(flag,f):f; }
-      if(flag){out[ourId]={oflag:flag,oflagSource:ROQUETAS_ATTR,ofiAt:dateVerified?checkedAt:null,oflagCheckedAt:checkedAt,oflagSourceDay:sourceDay,oflagFreshness:sourceDay?'source-day':'unknown'};meta.count++;meta.count_flags++;if(dateVerified)meta.count_flags_verified++;}
+      const flag=completeWorstFlag(slugs.map(flagAt));
+      if(!flag)meta.errors.push('lectura incompleta o ambigua de sectores para '+ourId);
+      if(flag){out[ourId]={oflag:flag,oflagSource:ROQUETAS_ATTR,ofiAt:null,oflagCheckedAt:checkedAt,oflagSourceDay:null,oflagFreshness:'unknown',oflagMunicipality:'Roquetas de Mar',oflagSectorIds:slugs};meta.count++;meta.count_flags++;if(dateVerified)meta.count_flags_verified++;}
     }
   }catch(e){ meta.errors.push(String(e&&e.message||e).slice(0,120)); console.log('! Roquetas oficial: '+meta.errors[0]); }
   meta.elapsed_ms=Date.now()-t0;
@@ -443,7 +453,7 @@ async function fetchVeraOficial(){
     }
     if(flags.length!==VERA_BEACHES.length)throw new Error('lectura incompleta de playas de Vera');
     const flag=flags.reduce((worst,value)=>worst?ejidoWorse(worst,value):value,null);
-    const checkedAt=new Date().toISOString();out['37']={oflag:flag,oflagSource:VERA_ATTR,oflagCheckedAt:checkedAt,oflagFreshness:'unknown'};meta.count=1;meta.count_flags=1;meta.count_flags_verified=0;
+    const checkedAt=new Date().toISOString();out['37']={oflag:flag,oflagSource:VERA_ATTR,oflagCheckedAt:checkedAt,oflagFreshness:'unknown',oflagMunicipality:'Vera',oflagSectorIds:VERA_BEACHES.map(beach=>beach.id)};meta.count=1;meta.count_flags=1;meta.count_flags_verified=0;
   }catch(e){meta.errors.push(String(e&&e.message||e).slice(0,160));console.log('! Vera oficial: '+meta.errors[0]);}
   meta.elapsed_ms=Date.now()-t0;
   console.log('· Datos oficiales Vera: '+meta.count_flags+'/'+meta.requested+' colores publicados · '+meta.count_flags_verified+' vigencias acreditadas ('+VERA_BEACHES.length+' fuentes exigidas) en '+meta.elapsed_ms+' ms');
@@ -1154,9 +1164,10 @@ async function appendFlagHistory(beaches,catalog){
     /* datos v91.13b: ya NO se graba exp. Es un atributo MUTABLE (se corrigio en 15/40 el 15 jul) y no se denormaliza dentro de un log de solo-anadir: el registro lleva id, asi que exp se DERIVA al analizar uniendo con playas_catalogo.json. Asi este bug no puede repetirse. */
     const ts=new Date().toISOString(); const lines=[];
     for(const [id,bd] of Object.entries(beaches)){
-      if(!bd||!bd.oflag||!bd.ofiAt) continue; // v91.381: el histórico científico solo acepta vigencia demostrable
+      if(!bd||!bd.oflag||!bd.ofiAt) continue; // Compatibilidad: requiere tiempo de fuente.
+      if(!flagIsCurrent(bd,Date.parse(ts)))continue; // v91.386: ni partes caducados ni servicio finalizado al histórico nuevo.
       const w=currentHourWeather(bd);
-      lines.push(JSON.stringify({ts,id:Number(id),oflag:bd.oflag,oflagSource:bd.oflagSource||null,abierta:(bd.abierta==null?null:bd.abierta),windK:(w.windK==null?null:w.windK),gustK:(w.gustK==null?null:w.gustK),windDir:(w.windDir==null?null:w.windDir),waveH:(w.waveH==null?null:w.waveH),waveDir:(w.waveDir==null?null:w.waveDir),temp:(w.temp==null?null:w.temp),code:(w.code==null?null:w.code)}));
+      lines.push(JSON.stringify({ts,id:Number(id),oflag:bd.oflag,oflagSource:bd.oflagSource||null,flag_schema_version:2,oflagSourceAt:bd.oflagSourceAt||null,oflagSourceDay:bd.oflagSourceDay||null,oflagCheckedAt:bd.oflagCheckedAt||null,abierta:(bd.abierta==null?null:bd.abierta),windK:(w.windK==null?null:w.windK),gustK:(w.gustK==null?null:w.gustK),windDir:(w.windDir==null?null:w.windDir),waveH:(w.waveH==null?null:w.waveH),waveDir:(w.waveDir==null?null:w.waveDir),temp:(w.temp==null?null:w.temp),code:(w.code==null?null:w.code)}));
     }
     if(!lines.length){ console.log('· Histórico de banderas: sin banderas oficiales que registrar'); return; }
     const fname='banderas_historico_'+year+'-'+month+'.jsonl';
@@ -1176,7 +1187,7 @@ async function main(){
   const beaches={},air={};
   await mapLimit(catalog,CONCURRENCY,async b=>{
     const [sc,aq]=await Promise.all([scenariosAt(b.lat,b.lng),airAt(b.lat,b.lng)]);
-    {const _id=String(b.id);const _off=Object.assign(sc,__OFI__[_id]||{});for(const _src of __MUNI_OFI__){const _m=_src[_id];if(_m&&_m.oflag){for(const _k of ['oflag','oflagSource','ofiAt','oflagCheckedAt','oflagSourceAt','oflagSourceDay','oflagFreshness']){if(Object.prototype.hasOwnProperty.call(_m,_k))_off[_k]=_m[_k];else delete _off[_k];}break;}}beaches[b.id]=_off;} // v91.381: la cascada conserva procedencia y evidencia completas
+    {const _id=String(b.id);beaches[b.id]=mergeOfficialFlag(sc,__OFI__[_id],__MUNI_OFI__.map(src=>src[_id]),b);} // v91.386: identidad y vigencia antes de prioridad municipal.
     { const __bo=beaches[b.id]; // v91.382: el valor anterior nunca se presenta como modelo recién actualizado
       if(__bo&&Array.isArray(__bo.days)&&__bo.days.some(x=>x&&x.agua==null)){
         const __prev=prevBeaches[b.id]||{},__pd=Array.isArray(__prev.days)?__prev.days:null;
@@ -1200,12 +1211,14 @@ async function main(){
   const previousAemet=await readPreviousAemet();
   const aemet_alerts=await fetchAemetAlerts(previousAemet).catch(e=>sanitizeAemetRecord({source:'AEMET Meteoalerta',fetched_at:new Date().toISOString(),ok:false,items:[],errors:[sanitizeErrorMessage(e.message)]}));
 
+  for(const [records,meta] of [[__OFI__,__OFI_META__],[__EJIDO__,__EJIDO_RES__.meta],[__ROQUETAS__,__ROQUETAS_RES__.meta],[__VERA__,__VERA_RES__.meta]])Object.assign(meta,flagMetrics(records));
   const out={
     generated_at:new Date().toISOString(),
     source:'Open-Meteo (forecast + marine + air-quality) + AEMET Meteoalerta',
     province,
     aemet_alerts,
     official:__OFI_META__, // compatibilidad: metadatos principales de la Junta
+    official_flag_summary:flagMetrics(beaches), // Cuenta fichas finales, sin duplicar fuentes.
     official_sources:{junta:__OFI_META__,el_ejido:__EJIDO_RES__.meta,roquetas:__ROQUETAS_RES__.meta,vera:__VERA_RES__.meta},
     beaches,
     air
