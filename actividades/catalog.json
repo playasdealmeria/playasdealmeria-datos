@@ -1,0 +1,1038 @@
+{
+  "version": 1,
+  "catalog_source_sha256": "97ab70012890b24abb968665e27cdccfcfcc87b92b1be376426ced01e9f63a56",
+  "geometry_source_sha256": "c134a349f80d1a0c6494b5a30864cff68fa045dc9f98bb61091028c02d600e1c",
+  "geometry_date": "2008–2009",
+  "points_purpose": "research_not_activity_routes",
+  "beaches": [
+    {
+      "id": 1,
+      "name": "Playas de Adra",
+      "points": [
+        {
+          "role": "reference",
+          "lat": 36.744724,
+          "lon": -3.014183
+        },
+        {
+          "role": "near",
+          "lat": 36.743825688825005,
+          "lon": -3.014183
+        },
+        {
+          "role": "context",
+          "lat": 36.73798666618757,
+          "lon": -3.014183
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "Playa de Balanegra",
+      "points": [
+        {
+          "role": "reference",
+          "lat": 36.747329,
+          "lon": -2.912853
+        },
+        {
+          "role": "near",
+          "lat": 36.746551039701956,
+          "lon": -2.9134135464158852
+        },
+        {
+          "role": "context",
+          "lat": 36.74149429776466,
+          "lon": -2.9170570981191397
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "name": "Los Baños / Guardias Viejas",
+      "points": [
+        {
+          "role": "reference",
+          "lat": 36.695583988467185,
+          "lon": -2.84638796174756
+        },
+        {
+          "role": "near",
+          "lat": 36.69513483287969,
+          "lon": -2.8454177207389253
+        },
+        {
+          "role": "context",
+          "lat": 36.692215321560965,
+          "lon": -2.8391111541828025
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "name": "Playa de Almerimar",
+      "points": [
+        {
+          "role": "reference",
+          "lat": 36.691461,
+          "lon": -2.782805
+        },
+        {
+          "role": "near",
+          "lat": 36.690825798076546,
+          "lon": -2.783597155986141
+        },
+        {
+          "role": "context",
+          "lat": 36.68669698557411,
+          "lon": -2.7887461698960587
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "name": "Punta Entinas-Sabinar",
+      "points": [
+        {
+          "role": "reference",
+          "lat": 36.689174,
+          "lon": -2.690951
+        },
+        {
+          "role": "near",
+          "lat": 36.68761807940391,
+          "lon": -2.689830755579397
+        },
+        {
+          "role": "context",
+          "lat": 36.68333929776466,
+          "lon": -2.686750083422739
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "name": "Playa de Aguadulce",
+      "points": [
+        {
+          "role": "reference",
+          "lat": 36.803582,
+          "lon": -2.576221
+        },
+        {
+          "role": "near",
+          "lat": 36.8031328444125,
+          "lon": -2.5752493923996447
+        },
+        {
+          "role": "context",
+          "lat": 36.80021333309378,
+          "lon": -2.5689339429973352
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "name": "La Romanilla",
+      "points": [
+        {
+          "role": "reference",
+          "lat": 36.766806,
+          "lon": -2.604306
+        },
+        {
+          "role": "near",
+          "lat": 36.76727100008103,
+          "lon": -2.6021396649783286
+        },
+        {
+          "role": "context",
+          "lat": 36.768549750303876,
+          "lon": -2.596182243668733
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "name": "Playa Serena / Urbanización de Roquetas",
+      "points": [
+        {
+          "role": "reference",
+          "lat": 36.719869,
+          "lon": -2.629242
+        },
+        {
+          "role": "near",
+          "lat": 36.719636499959485,
+          "lon": -2.6281594947315434
+        },
+        {
+          "role": "context",
+          "lat": 36.71812524969613,
+          "lon": -2.6211232104865765
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "name": "Playa de San Miguel",
+      "points": [
+        {
+          "role": "reference",
+          "lat": 36.82837,
+          "lon": -2.454321
+        },
+        {
+          "role": "near",
+          "lat": 36.827592039701955,
+          "lon": -2.454882139598763
+        },
+        {
+          "role": "context",
+          "lat": 36.82253529776466,
+          "lon": -2.4585295469907207
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "name": "El Zapillo / El Palmeral",
+      "points": [
+        {
+          "role": "reference",
+          "lat": 36.824719,
+          "lon": -2.448229
+        },
+        {
+          "role": "near",
+          "lat": 36.82385129803603,
+          "lon": -2.4485194533705847
+        },
+        {
+          "role": "context",
+          "lat": 36.81821123527024,
+          "lon": -2.450407400279386
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "name": "Nueva Almería",
+      "points": [
+        {
+          "role": "reference",
+          "lat": 36.817642,
+          "lon": -2.438088
+        },
+        {
+          "role": "near",
+          "lat": 36.816864039701954,
+          "lon": -2.4386490609381704
+        },
+        {
+          "role": "context",
+          "lat": 36.81180729776466,
+          "lon": -2.4422959570362783
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "name": "Costacabana",
+      "points": [
+        {
+          "role": "reference",
+          "lat": 36.83507,
+          "lon": -2.38442
+        },
+        {
+          "role": "near",
+          "lat": 36.834620844412505,
+          "lon": -2.383447992579044
+        },
+        {
+          "role": "context",
+          "lat": 36.83170133309378,
+          "lon": -2.377129944342832
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "name": "Retamar / El Toyo",
+      "points": [
+        {
+          "role": "reference",
+          "lat": 36.833643,
+          "lon": -2.318463
+        },
+        {
+          "role": "near",
+          "lat": 36.83277529803603,
+          "lon": -2.318172512748367
+        },
+        {
+          "role": "context",
+          "lat": 36.82713523527024,
+          "lon": -2.316284345612753
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "name": "Cabo de Gata - San Miguel",
+      "points": [
+        {
+          "role": "reference",
+          "lat": 36.780212,
+          "lon": -2.245439
+        },
+        {
+          "role": "near",
+          "lat": 36.77957679807655,
+          "lon": -2.246232072323369
+        },
+        {
+          "role": "context",
+          "lat": 36.77544798557411,
+          "lon": -2.2513870424252653
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "name": "La Fabriquilla",
+      "points": [
+        {
+          "role": "reference",
+          "lat": 36.737449,
+          "lon": -2.207315
+        },
+        {
+          "role": "near",
+          "lat": 36.73681379807655,
+          "lon": -2.2081076303015936
+        },
+        {
+          "role": "context",
+          "lat": 36.73268498557411,
+          "lon": -2.2132597272619545
+        }
+      ]
+    },
+    {
+      "id": 16,
+      "name": "Playa de la Garrofa",
+      "points": [
+        {
+          "role": "reference",
+          "lat": 36.825477,
+          "lon": -2.515921
+        },
+        {
+          "role": "near",
+          "lat": 36.82460929803603,
+          "lon": -2.5156305437521573
+        },
+        {
+          "role": "context",
+          "lat": 36.81896923527024,
+          "lon": -2.5137425781411795
+        }
+      ]
+    },
+    {
+      "id": 17,
+      "name": "Playa de San José",
+      "points": [
+        {
+          "role": "reference",
+          "lat": 36.762861,
+          "lon": -2.106685
+        },
+        {
+          "role": "near",
+          "lat": 36.762411844412505,
+          "lon": -2.105713908534604
+        },
+        {
+          "role": "context",
+          "lat": 36.75949233309378,
+          "lon": -2.0994018140095303
+        }
+      ]
+    },
+    {
+      "id": 18,
+      "name": "Los Genoveses",
+      "points": [
+        {
+          "role": "reference",
+          "lat": 36.744596,
+          "lon": -2.122007
+        },
+        {
+          "role": "near",
+          "lat": 36.7450451555875,
+          "lon": -2.121036139704453
+        },
+        {
+          "role": "context",
+          "lat": 36.74796466690622,
+          "lon": -2.1147255477833995
+        }
+      ]
+    },
+    {
+      "id": 19,
+      "name": "Playa del Mónsul",
+      "points": [
+        {
+          "role": "reference",
+          "lat": 36.730786,
+          "lon": -2.145533
+        },
+        {
+          "role": "near",
+          "lat": 36.72898937765002,
+          "lon": -2.145533
+        },
+        {
+          "role": "context",
+          "lat": 36.72404866618757,
+          "lon": -2.145533
+        }
+      ]
+    },
+    {
+      "id": 20,
+      "name": "Barronal",
+      "points": [
+        {
+          "role": "reference",
+          "lat": 36.72965,
+          "lon": -2.139667
+        },
+        {
+          "role": "near",
+          "lat": 36.72878229803603,
+          "lon": -2.1393769066439856
+        },
+        {
+          "role": "context",
+          "lat": 36.72314223527024,
+          "lon": -2.137491299829892
+        }
+      ]
+    },
+    {
+      "id": 21,
+      "name": "Cala Rajá",
+      "points": [
+        {
+          "role": "reference",
+          "lat": 36.724338,
+          "lon": -2.176784
+        },
+        {
+          "role": "near",
+          "lat": 36.72356003970196,
+          "lon": -2.1762236214353483
+        },
+        {
+          "role": "context",
+          "lat": 36.71850329776466,
+          "lon": -2.172581160765111
+        }
+      ]
+    },
+    {
+      "id": 22,
+      "name": "Los Escullos",
+      "points": [
+        {
+          "role": "reference",
+          "lat": 36.805239,
+          "lon": -2.062431
+        },
+        {
+          "role": "near",
+          "lat": 36.80587420192345,
+          "lon": -2.0616376685500093
+        },
+        {
+          "role": "context",
+          "lat": 36.81000301442589,
+          "lon": -2.0564810141250685
+        }
+      ]
+    },
+    {
+      "id": 23,
+      "name": "La Isleta del Moro",
+      "points": [
+        {
+          "role": "reference",
+          "lat": 36.813898,
+          "lon": -2.050912
+        },
+        {
+          "role": "near",
+          "lat": 36.81453320192345,
+          "lon": -2.05011857882105
+        },
+        {
+          "role": "context",
+          "lat": 36.81726666690622,
+          "lon": -2.0436239611017104
+        }
+      ]
+    },
+    {
+      "id": 24,
+      "name": "El Playazo de Rodalquilar",
+      "points": [
+        {
+          "role": "reference",
+          "lat": 36.861005,
+          "lon": -2.006205
+        },
+        {
+          "role": "near",
+          "lat": 36.86077249995948,
+          "lon": -2.0051204987727593
+        },
+        {
+          "role": "context",
+          "lat": 36.859261249696125,
+          "lon": -1.998071240795694
+        }
+      ]
+    },
+    {
+      "id": 25,
+      "name": "Las Negras",
+      "points": [
+        {
+          "role": "reference",
+          "lat": 36.879567,
+          "lon": -2.003706
+        },
+        {
+          "role": "near",
+          "lat": 36.8800161555875,
+          "lon": -2.00273342651346
+        },
+        {
+          "role": "context",
+          "lat": 36.88293566690622,
+          "lon": -1.9964116988509513
+        }
+      ]
+    },
+    {
+      "id": 26,
+      "name": "Cala de San Pedro",
+      "points": [
+        {
+          "role": "reference",
+          "lat": 36.903155,
+          "lon": -1.979137
+        },
+        {
+          "role": "near",
+          "lat": 36.90228729803603,
+          "lon": -1.9788462483252023
+        },
+        {
+          "role": "context",
+          "lat": 36.89664723527024,
+          "lon": -1.976956362439017
+        }
+      ]
+    },
+    {
+      "id": 27,
+      "name": "Cala de Enmedio",
+      "points": [
+        {
+          "role": "reference",
+          "lat": 36.932836,
+          "lon": -1.946453
+        },
+        {
+          "role": "near",
+          "lat": 36.93193768882501,
+          "lon": -1.944506494430545
+        },
+        {
+          "role": "context",
+          "lat": 36.92946733309378,
+          "lon": -1.9391536041145434
+        }
+      ]
+    },
+    {
+      "id": 28,
+      "name": "Cala del Plomo",
+      "points": [
+        {
+          "role": "reference",
+          "lat": 36.923039,
+          "lon": -1.954811
+        },
+        {
+          "role": "near",
+          "lat": 36.922806499959485,
+          "lon": -1.9537256170656383
+        },
+        {
+          "role": "context",
+          "lat": 36.92129524969613,
+          "lon": -1.9466706279922863
+        }
+      ]
+    },
+    {
+      "id": 29,
+      "name": "Agua Amarga",
+      "points": [
+        {
+          "role": "reference",
+          "lat": 36.939059,
+          "lon": -1.934168
+        },
+        {
+          "role": "near",
+          "lat": 36.938609844412504,
+          "lon": -1.9331946677413794
+        },
+        {
+          "role": "context",
+          "lat": 36.93569033309378,
+          "lon": -1.9268680080603444
+        }
+      ]
+    },
+    {
+      "id": 30,
+      "name": "Playa de los Muertos",
+      "points": [
+        {
+          "role": "reference",
+          "lat": 36.954063,
+          "lon": -1.898826
+        },
+        {
+          "role": "near",
+          "lat": 36.95484096029804,
+          "lon": -1.8982639356708417
+        },
+        {
+          "role": "context",
+          "lat": 36.95989770223534,
+          "lon": -1.894610517531314
+        }
+      ]
+    },
+    {
+      "id": 31,
+      "name": "Playa de Carboneras",
+      "points": [
+        {
+          "role": "reference",
+          "lat": 37.000365,
+          "lon": -1.889588
+        },
+        {
+          "role": "near",
+          "lat": 37.00100020192345,
+          "lon": -1.8887926372033774
+        },
+        {
+          "role": "context",
+          "lat": 37.00512901442589,
+          "lon": -1.883622779025331
+        }
+      ]
+    },
+    {
+      "id": 32,
+      "name": "Mojácar Playa",
+      "points": [
+        {
+          "role": "reference",
+          "lat": 37.129595,
+          "lon": -1.830383
+        },
+        {
+          "role": "near",
+          "lat": 37.12982750004052,
+          "lon": -1.8292946616476944
+        },
+        {
+          "role": "context",
+          "lat": 37.131338750303875,
+          "lon": -1.8222204623577078
+        }
+      ]
+    },
+    {
+      "id": 33,
+      "name": "Marina de la Torre",
+      "points": [
+        {
+          "role": "reference",
+          "lat": 37.156278,
+          "lon": -1.82406
+        },
+        {
+          "role": "near",
+          "lat": 37.15691320192345,
+          "lon": -1.8232629999303112
+        },
+        {
+          "role": "context",
+          "lat": 37.16104201442589,
+          "lon": -1.8180824994773337
+        }
+      ]
+    },
+    {
+      "id": 34,
+      "name": "Playa de Macenas",
+      "points": [
+        {
+          "role": "reference",
+          "lat": 37.082522,
+          "lon": -1.85016
+        },
+        {
+          "role": "near",
+          "lat": 37.08329996029804,
+          "lon": -1.8495969846320204
+        },
+        {
+          "role": "context",
+          "lat": 37.08835670223534,
+          "lon": -1.845937384740153
+        }
+      ]
+    },
+    {
+      "id": 35,
+      "name": "Playa del Sombrerico",
+      "points": [
+        {
+          "role": "reference",
+          "lat": 37.078314,
+          "lon": -1.849819
+        },
+        {
+          "role": "near",
+          "lat": 37.079091960298044,
+          "lon": -1.849256015881547
+        },
+        {
+          "role": "context",
+          "lat": 37.08414870223534,
+          "lon": -1.8455966191116016
+        }
+      ]
+    },
+    {
+      "id": 36,
+      "name": "Playa de Garrucha",
+      "points": [
+        {
+          "role": "reference",
+          "lat": 37.179687,
+          "lon": -1.820963
+        },
+        {
+          "role": "near",
+          "lat": 37.179687,
+          "lon": -1.819835522501866
+        },
+        {
+          "role": "context",
+          "lat": 37.179687,
+          "lon": -1.8125069187639948
+        }
+      ]
+    },
+    {
+      "id": 37,
+      "name": "Vera Playa",
+      "points": [
+        {
+          "role": "reference",
+          "lat": 37.226183,
+          "lon": -1.799666
+        },
+        {
+          "role": "near",
+          "lat": 37.2257338444125,
+          "lon": -1.7986889741487333
+        },
+        {
+          "role": "context",
+          "lat": 37.22281433309378,
+          "lon": -1.7923383061154994
+        }
+      ]
+    },
+    {
+      "id": 38,
+      "name": "Playazo de Villaricos",
+      "points": [
+        {
+          "role": "reference",
+          "lat": 37.243113,
+          "lon": -1.774983
+        },
+        {
+          "role": "near",
+          "lat": 37.24334550004052,
+          "lon": -1.7738930245171436
+        },
+        {
+          "role": "context",
+          "lat": 37.244856750303875,
+          "lon": -1.7668081838785776
+        }
+      ]
+    },
+    {
+      "id": 41,
+      "name": "San Juan de los Terreros",
+      "points": [
+        {
+          "role": "reference",
+          "lat": 37.357444,
+          "lon": -1.657743
+        },
+        {
+          "role": "near",
+          "lat": 37.356666039701956,
+          "lon": -1.6583080711640001
+        },
+        {
+          "role": "context",
+          "lat": 37.35160929776466,
+          "lon": -1.661981033730002
+        }
+      ]
+    },
+    {
+      "id": 43,
+      "name": "Playa de los Cocedores",
+      "points": [
+        {
+          "role": "reference",
+          "lat": 37.375121,
+          "lon": -1.629382
+        },
+        {
+          "role": "near",
+          "lat": 37.37338559607206,
+          "lon": -1.6299671425568716
+        },
+        {
+          "role": "context",
+          "lat": 37.36861323527024,
+          "lon": -1.6315762845882684
+        }
+      ]
+    },
+    {
+      "id": 44,
+      "name": "Las Salinas de Cabo de Gata",
+      "points": [
+        {
+          "role": "reference",
+          "lat": 36.757202,
+          "lon": -2.223908
+        },
+        {
+          "role": "near",
+          "lat": 36.75633429803603,
+          "lon": -2.224198197517954
+        },
+        {
+          "role": "context",
+          "lat": 36.75069423527024,
+          "lon": -2.2260844813846536
+        }
+      ]
+    },
+    {
+      "id": 45,
+      "name": "Playa del Palmer",
+      "points": [
+        {
+          "role": "reference",
+          "lat": 36.822912,
+          "lon": -2.529349
+        },
+        {
+          "role": "near",
+          "lat": 36.822679499959484,
+          "lon": -2.5282650388606704
+        },
+        {
+          "role": "context",
+          "lat": 36.82116824969613,
+          "lon": -2.521219291455028
+        }
+      ]
+    },
+    {
+      "id": 46,
+      "name": "La Calilla de San Jose",
+      "points": [
+        {
+          "role": "reference",
+          "lat": 36.756126,
+          "lon": -2.109965
+        },
+        {
+          "role": "near",
+          "lat": 36.75635850004052,
+          "lon": -2.108881983310241
+        },
+        {
+          "role": "context",
+          "lat": 36.757869750303875,
+          "lon": -2.1018423748268074
+        }
+      ]
+    },
+    {
+      "id": 47,
+      "name": "Cala de la Media Luna",
+      "points": [
+        {
+          "role": "reference",
+          "lat": 36.731392,
+          "lon": -2.151725
+        },
+        {
+          "role": "near",
+          "lat": 36.73052429803603,
+          "lon": -2.151434900062454
+        },
+        {
+          "role": "context",
+          "lat": 36.72488423527024,
+          "lon": -2.1495492504684046
+        }
+      ]
+    },
+    {
+      "id": 48,
+      "name": "Cala Arena",
+      "points": [
+        {
+          "role": "reference",
+          "lat": 36.720742,
+          "lon": -2.184144
+        },
+        {
+          "role": "near",
+          "lat": 36.720742,
+          "lon": -2.183023295343095
+        },
+        {
+          "role": "context",
+          "lat": 36.720742,
+          "lon": -2.1757387150732117
+        }
+      ]
+    },
+    {
+      "id": 49,
+      "name": "Playa del Corralete",
+      "points": [
+        {
+          "role": "reference",
+          "lat": 36.725601,
+          "lon": -2.194621
+        },
+        {
+          "role": "near",
+          "lat": 36.72473329803603,
+          "lon": -2.194911078060488
+        },
+        {
+          "role": "context",
+          "lat": 36.719093235270236,
+          "lon": -2.1967965854536606
+        }
+      ]
+    },
+    {
+      "id": 50,
+      "name": "Playa de Balerma",
+      "points": [
+        {
+          "role": "reference",
+          "lat": 36.73228779119434,
+          "lon": -2.8908079611981936
+        },
+        {
+          "role": "near",
+          "lat": 36.73150983089629,
+          "lon": -2.8913683977805986
+        },
+        {
+          "role": "context",
+          "lat": 36.726453088959,
+          "lon": -2.895011235566232
+        }
+      ]
+    },
+    {
+      "id": 51,
+      "name": "Cala Higuera",
+      "points": [
+        {
+          "role": "reference",
+          "lat": 36.76511139147191,
+          "lon": -2.0940210039195444
+        },
+        {
+          "role": "near",
+          "lat": 36.76424368950794,
+          "lon": -2.094311231365634
+        },
+        {
+          "role": "context",
+          "lat": 36.75860362674215,
+          "lon": -2.0961977097652156
+        }
+      ]
+    },
+    {
+      "id": 52,
+      "name": "Playa del Embarcadero",
+      "points": [
+        {
+          "role": "reference",
+          "lat": 36.7961641330408,
+          "lon": -2.062378688108499
+        },
+        {
+          "role": "near",
+          "lat": 36.7961641330408,
+          "lon": -2.061256880944529
+        },
+        {
+          "role": "context",
+          "lat": 36.7961641330408,
+          "lon": -2.0539651343787266
+        }
+      ]
+    }
+  ]
+}
