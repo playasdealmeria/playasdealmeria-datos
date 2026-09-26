@@ -61,6 +61,7 @@ jobs:
         run: |
           node --check build-data.mjs
           node --check validar-rachas.mjs
+          node --check archivo-previsiones.mjs
           node --check analizar-rachas.mjs
           node --test
 
@@ -105,6 +106,7 @@ jobs:
 
           git add datos_playas.json
           git add viento_validacion_v2_*.jsonl 2>/dev/null || true
+          if [ -d archivo_previsiones_v1 ]; then git add archivo_previsiones_v1; fi
           git add banderas_historico_*.jsonl 2>/dev/null || true
 
           if git diff --cached --quiet; then
@@ -114,14 +116,19 @@ jobs:
 
           git commit -m "Actualizar datos meteorológicos"
 
+          # Copia verificada fuera del checkout antes de cualquier reset del reintento.
+          ARCHIVE_BACKUP="$RUNNER_TEMP/previsiones-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          node archivo-previsiones.mjs copy archivo_previsiones_v1 "$ARCHIVE_BACKUP"
           if ! git push origin main; then
             echo "Push rechazado; sincronizando y regenerando datos..."
             git fetch origin main
             git reset --hard origin/main
+            node archivo-previsiones.mjs copy "$ARCHIVE_BACKUP" archivo_previsiones_v1
             node build-data.mjs
             node validar-rachas.mjs || true
             git add datos_playas.json
             git add viento_validacion_v2_*.jsonl 2>/dev/null || true
+          if [ -d archivo_previsiones_v1 ]; then git add archivo_previsiones_v1; fi
           git add banderas_historico_*.jsonl 2>/dev/null || true
             if git diff --cached --quiet; then
               echo "No hay cambios tras sincronizar"

@@ -13,6 +13,7 @@
  * Uso:    node validar-rachas.mjs
  */
 import https from 'node:https';
+import {saveCapture,ARCHIVE_DIR} from './archivo-previsiones.mjs';
 import {
   existsSync,
   readFileSync,
@@ -285,8 +286,16 @@ async function fetchForecasts(capturedAt){
     forecast_hours:String(Math.max(...NOMINAL_LEADS)+2),
     wind_speed_unit:'kmh'
   });
+  const startedAt=new Date().toISOString();
   const payload=await getJSON('https://api.open-meteo.com/v1/forecast?'+query);
-  return forecastRecords(STATIONS,payload,capturedAt,NOMINAL_LEADS);
+  const receivedAt=new Date().toISOString();
+  try{
+    saveCapture(join(DIR,ARCHIVE_DIR),{stations:STATIONS,payload,query:Object.fromEntries(query),startedAt,receivedAt});
+  }catch(e){
+    console.error('::warning::Archivo original no conservado: '+e.message);
+    process.exitCode=1; // no ocultar fallo; conservar todavía la serie v2 y el feed
+  }
+  return forecastRecords(STATIONS,payload,receivedAt,NOMINAL_LEADS);
 }
 
 async function main(){

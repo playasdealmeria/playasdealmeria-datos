@@ -52,14 +52,14 @@ const AEMET_COASTAL_ZONE_CODES = new Set(Object.keys(AEMET_ZONE_CODES));
 function avg(arr){const v=(arr||[]).filter(x=>x!=null&&!Number.isNaN(x));return v.length?v.reduce((a,b)=>a+b,0)/v.length:null;}
 function maxv(arr){const v=(arr||[]).filter(x=>x!=null&&!Number.isNaN(x));return v.length?Math.max(...v):null;}
 function mode(arr){const v=(arr||[]).filter(x=>x!=null);if(!v.length)return null;const m=new Map();v.forEach(x=>m.set(x,(m.get(x)||0)+1));return [...m.entries()].sort((a,b)=>b[1]-a[1])[0][0];}
-function windType(dir,spd){if(spd<12)return 'flojo';if(dir>=45&&dir<=135)return 'levante';if(dir>135&&dir<200)return 'sur';if(dir>=200&&dir<=330)return 'poniente';return 'terral';}
-function codeEstado(c){if(c===0)return{estado:'sol',estadoTxt:'despejado',ico:'☀️'};if(c<=3)return{estado:'variable',estadoTxt:'parcialmente nublado',ico:'⛅'};if(c<=48)return{estado:'nubes',estadoTxt:'nublado o niebla',ico:'☁️'};if(c<=67)return{estado:'nubes',estadoTxt:'lluvia',ico:'🌧️'};if(c<=82)return{estado:'nubes',estadoTxt:'chubascos',ico:'🌦️'};if(c<=99)return{estado:'nubes',estadoTxt:'tormenta',ico:'⛈️'};return{estado:'variable',estadoTxt:'variable',ico:'⛅'};}
+function windType(dir,spd){if(spd==null||typeof spd==='boolean'||String(spd).trim()===''||!Number.isFinite(Number(spd))||Number(spd)<0)return 'desconocido';if(Number(spd)>=12&&(dir==null||typeof dir==='boolean'||String(dir).trim()===''||!Number.isFinite(Number(dir))))return 'desconocido';if(spd<12)return 'flojo';if(dir>=45&&dir<=135)return 'levante';if(dir>135&&dir<200)return 'sur';if(dir>=200&&dir<=330)return 'poniente';return 'terral';}
+function codeEstado(c){if(typeof c!=='number'||!Number.isInteger(c)||c<0||c>99)return{estado:'desconocido',estadoTxt:'sin dato',ico:'—'};if(c===0)return{estado:'sol',estadoTxt:'despejado',ico:'☀️'};if(c<=3)return{estado:'variable',estadoTxt:'parcialmente nublado',ico:'⛅'};if(c<=48)return{estado:'nubes',estadoTxt:'nublado o niebla',ico:'☁️'};if(c<=67)return{estado:'nubes',estadoTxt:'lluvia',ico:'🌧️'};if(c<=82)return{estado:'nubes',estadoTxt:'chubascos',ico:'🌦️'};if(c<=99)return{estado:'nubes',estadoTxt:'tormenta',ico:'⛈️'};return{estado:'variable',estadoTxt:'variable',ico:'⛅'};}
 const MARINE_MODELS = 'best_match,meteofrance_wave,dwd_ewam,ecmwf_wam';
 const MARINE_BEST_SUFFIX = 'marine_best_match';
 const MARINE_COMPARE_SUFFIXES = ['meteofrance_wave','dwd_ewam','ecmwf_wam'];
 function marineSeries(block,name,suffix){const a=block&&block[name+'_'+suffix];return Array.isArray(a)?a:[];}
-function marineMembers(block,index,heightName,dirName,periodName){return MARINE_COMPARE_SUFFIXES.map(m=>{const h=Number(marineSeries(block,heightName,m)[index]),d=Number(marineSeries(block,dirName,m)[index]),p=periodName?Number(marineSeries(block,periodName,m)[index]):NaN;if(!Number.isFinite(h))return null;const out={m,h};if(Number.isFinite(d))out.d=d;if(Number.isFinite(p))out.p=p;return out;}).filter(Boolean);}
-function aggregateWaveModels(rows){const groups={};(rows||[]).forEach(row=>(row&&row.waveModels||[]).forEach(x=>{if(!x||!x.m||!Number.isFinite(Number(x.h)))return;(groups[x.m]=groups[x.m]||[]).push(x);}));return MARINE_COMPARE_SUFFIXES.map(m=>{const list=groups[m]||[];if(!list.length)return null;const h=avg(list.map(x=>x.h)),d=meanDir(list.map(x=>x.d)),p=avg(list.map(x=>x.p));const out={m,h:Math.round(h*100)/100};if(d!=null)out.d=Math.round(d);if(p!=null)out.p=Math.round(p*10)/10;return out;}).filter(Boolean);}
+function marineMembers(block,index,heightName,dirName,periodName){const number=v=>typeof v==='number'&&Number.isFinite(v)&&v>=0?v:null;return MARINE_COMPARE_SUFFIXES.map(m=>{const h=number(marineSeries(block,heightName,m)[index]),d=number(marineSeries(block,dirName,m)[index]),p=periodName?number(marineSeries(block,periodName,m)[index]):null;if(h==null)return null;const out={m,h};if(d!=null)out.d=d;if(p!=null)out.p=p;return out;}).filter(Boolean);}
+function aggregateWaveModels(rows){const groups={},valid=v=>typeof v==='number'&&Number.isFinite(v)&&v>=0;(rows||[]).forEach(row=>(row&&row.waveModels||[]).forEach(x=>{if(!x||!x.m||!valid(x.h))return;(groups[x.m]=groups[x.m]||[]).push(x);}));return MARINE_COMPARE_SUFFIXES.map(m=>{const list=groups[m]||[];if(!list.length)return null;const h=avg(list.map(x=>x.h)),ds=list.map(x=>x.d).filter(valid),ps=list.map(x=>x.p).filter(valid),d=ds.length?meanDir(ds):null,p=ps.length?avg(ps):null;const out={m,h:Math.round(h*100)/100};if(d!=null)out.d=Math.round(d);if(p!=null)out.p=Math.round(p*10)/10;return out;}).filter(Boolean);}
 function normalizeMarineResponse(mar){
   const h=mar&&mar.hourly||{},d=mar&&mar.daily||{},ht=Array.isArray(h.time)?h.time:[],dt=Array.isArray(d.time)?d.time:[];
   const hBest=(name)=>{const a=marineSeries(h,name,MARINE_BEST_SUFFIX);return a.length?a:(Array.isArray(h[name])?h[name]:[]);};
@@ -98,7 +98,7 @@ function summarizePart(dateStr,startHour,endHour,wh,mh){
   if(!idxs.length)return null;
   const times=idxs.map(i=>wh.time[i]);
   const code=mode(idxs.map(i=>wh.weather_code?.[i]));
-  const e=codeEstado(code==null?0:code);
+  const e=codeEstado(code);
   const spd=avg(idxs.map(i=>wh.wind_speed_10m?.[i]));
   const gust=maxv(idxs.map(i=>wh.wind_gusts_10m?.[i]));
   const dir=meanDir(idxs.map(i=>wh.wind_direction_10m?.[i]));
@@ -521,8 +521,8 @@ async function scenariosAt(lat,lng){
   for(let i=0;i<len;i++){
     const dateStr=d.time?.[i]||new Date(Date.now()+i*864e5).toISOString().slice(0,10);
     const e=codeEstado(i===0?(cur.weather_code??d.weather_code?.[0]):d.weather_code?.[i]);
-    const spd=d.wind_speed_10m_max?.[i]??(i===0?cur.wind_speed_10m:0)??0; // datos v91.14: dia 0 = max del dia (no la foto current)
-    const dir=d.wind_direction_10m_dominant?.[i]??(i===0?cur.wind_direction_10m:0)??0; // datos v91.14: dia 0 = dominante del dia
+    const spd=d.wind_speed_10m_max?.[i]??(i===0?cur.wind_speed_10m:null)??null; // datos v91.14: dia 0 = max del dia (no la foto current)
+    const dir=d.wind_direction_10m_dominant?.[i]??(i===0?cur.wind_direction_10m:null)??null; // datos v91.14: dia 0 = dominante del dia
     out.push({
       key:i===0?'hoy':'d'+i,
       label:i===0?'Hoy':dayLabel(dateStr,i),
@@ -539,9 +539,10 @@ async function scenariosAt(lat,lng){
       wavePeriod:__wavePeriodDay[dateStr]??null,
       estado:e.estado,
       estadoTxt:e.estadoTxt,
+      windDir:dir!=null&&Number.isFinite(Number(dir))?Math.round(Number(dir)):null,
       viento:windType(dir,spd),
-      fuerza:Math.round(spd),
-      rachas:Math.round(d.wind_gusts_10m_max?.[i]??(i===0?cur.wind_gusts_10m:spd*1.3)??spd*1.3), // datos v91.14: dia 0 = max de 24h
+      fuerza:(typeof spd==='number'&&Number.isFinite(spd)&&spd>=0?Math.round(spd):null),
+      rachas:(typeof (d.wind_gusts_10m_max?.[i]??(i===0?cur.wind_gusts_10m:(typeof spd==='number'&&Number.isFinite(spd)?spd*1.3:null))??(typeof spd==='number'&&Number.isFinite(spd)?spd*1.3:null))==='number'&&Number.isFinite((d.wind_gusts_10m_max?.[i]??(i===0?cur.wind_gusts_10m:(typeof spd==='number'&&Number.isFinite(spd)?spd*1.3:null))??(typeof spd==='number'&&Number.isFinite(spd)?spd*1.3:null)))&&(d.wind_gusts_10m_max?.[i]??(i===0?cur.wind_gusts_10m:(typeof spd==='number'&&Number.isFinite(spd)?spd*1.3:null))??(typeof spd==='number'&&Number.isFinite(spd)?spd*1.3:null))>=0?Math.round((d.wind_gusts_10m_max?.[i]??(i===0?cur.wind_gusts_10m:(typeof spd==='number'&&Number.isFinite(spd)?spd*1.3:null))??(typeof spd==='number'&&Number.isFinite(spd)?spd*1.3:null))):null),
       sale:d.sunrise?.[i]?String(d.sunrise[i]).slice(11,16):'06:50', // datos v91.14-B: el literal viejo daba '' (slice fuera de rango)
       pone:d.sunset?.[i]?String(d.sunset[i]).slice(11,16):'21:30', // datos v91.14-B
       uv:d.uv_index_max?.[i]!=null?Math.round(d.uv_index_max[i]):null, // datos v91.14-B: guardaba el array, no el elemento (Math.round(null)=0)
@@ -560,14 +561,14 @@ async function scenariosAt(lat,lng){
     if(di==null||Number.isNaN(hh))return;
     hourly.time.push(di*24+hh);
     // v91.283: un hueco en la serie por horas se pintaba como "0°" en la tira de horas.
-    hourly.temp.push(hr.temperature_2m?.[i]!=null?Math.round(hr.temperature_2m[i]):null);
+    hourly.temp.push((typeof hr.temperature_2m?.[i]==='number'&&Number.isFinite(hr.temperature_2m?.[i])?Math.round(hr.temperature_2m?.[i]):null));
     hourly.rh.push(hr.relative_humidity_2m?.[i]!=null?Math.round(hr.relative_humidity_2m[i]):null);
     hourly.pr.push(hr.precipitation?.[i]!=null?Math.round(hr.precipitation[i]*10)/10:0);
-    hourly.pop.push(hr.precipitation_probability?.[i]!=null?Math.round(hr.precipitation_probability[i]):0);
-    hourly.code.push(hr.weather_code?.[i]??0);
-    hourly.wind.push(hr.wind_speed_10m?.[i]!=null?Math.round(hr.wind_speed_10m[i]):0);
-    hourly.gust.push(hr.wind_gusts_10m?.[i]!=null?Math.round(hr.wind_gusts_10m[i]):null);
-    hourly.wdir.push(hr.wind_direction_10m?.[i]!=null?Math.round(hr.wind_direction_10m[i]):0);
+    hourly.pop.push(typeof hr.precipitation_probability?.[i]==='number'&&Number.isFinite(hr.precipitation_probability[i])&&hr.precipitation_probability[i]>=0&&hr.precipitation_probability[i]<=100?Math.round(hr.precipitation_probability[i]):null);
+    hourly.code.push((typeof hr.weather_code?.[i]==='number'&&Number.isFinite(hr.weather_code?.[i])&&hr.weather_code?.[i]>=0&&hr.weather_code?.[i]<=99?Math.round(hr.weather_code?.[i]):null));
+    hourly.wind.push((typeof hr.wind_speed_10m?.[i]==='number'&&Number.isFinite(hr.wind_speed_10m?.[i])&&hr.wind_speed_10m?.[i]>=0?Math.round(hr.wind_speed_10m?.[i]):null));
+    hourly.gust.push((typeof hr.wind_gusts_10m?.[i]==='number'&&Number.isFinite(hr.wind_gusts_10m?.[i])&&hr.wind_gusts_10m?.[i]>=0?Math.round(hr.wind_gusts_10m?.[i]):null));
+    hourly.wdir.push((typeof hr.wind_direction_10m?.[i]==='number'&&Number.isFinite(hr.wind_direction_10m?.[i])&&hr.wind_direction_10m?.[i]>=0&&hr.wind_direction_10m?.[i]<=360?Math.round(hr.wind_direction_10m?.[i]):null));
     hourly.wave.push(marineByTime[t]?.waveH??null); // datos v91.14-B: sin fabricar 0 m
     hourly.waveDir.push(marineByTime[t]?.waveDir!=null?Math.round(marineByTime[t].waveDir):null); // datos v91.14-B: sin fabricar 180
   });
