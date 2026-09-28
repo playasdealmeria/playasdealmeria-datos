@@ -20,11 +20,11 @@ function sourceFunctions(response){
 }
 test('la captura real de Roquetas nunca asigna Ventilla a Nueva Almería ni usa el día AEMET',async()=>{
   const {fetchRoquetasOficial,ROQUETAS_MAP}=sourceFunctions(fixture.roquetas);
-  assert.deepEqual(Object.keys(ROQUETAS_MAP),['6','7','8']);
+  assert.deepEqual(Object.keys(ROQUETAS_MAP),['6','7','8','57','60']);
   for(const id of Object.keys(ROQUETAS_MAP))assert.equal(catalog.find(b=>String(b.id)===id).municipio,'Roquetas de Mar');
   assert.equal(catalog.find(b=>b.id===11).municipio,'Almería');
   const {data,meta}=await fetchRoquetasOficial();
-  assert.equal(data['11'],undefined);assert.equal(meta.count_flags,3);assert.equal(meta.count_flags_verified,0);
+  assert.equal(data['11'],undefined);assert.equal(meta.count_flags,5);assert.equal(meta.count_flags_verified,0);
   for(const row of Object.values(data)){assert.equal(row.oflagFreshness,'unknown');assert.equal(row.ofiAt,null);assert.equal(row.oflagSourceDay,null);}
 });
 test('Serena requiere ambos sectores; ausencia o contradicción no hereda otro tooltip',async()=>{

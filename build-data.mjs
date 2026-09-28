@@ -14,6 +14,7 @@
 import { readFile, writeFile, appendFile } from 'node:fs/promises';
 import { gunzipSync, unzipSync } from 'node:zlib';
 import { flagIsCurrent, roquetasFlag, completeWorstFlag, mergeOfficialFlag, flagMetrics } from './flag-integrity.mjs'; // v91.386
+import { collectNewMunicipalFlags, veraGroups391 } from './municipal-altas.mjs';
 import https from 'node:https'; // v91.11 datos: TLS 1.2 para la Junta
 import { applyWindAnchor, fetchAnchorBias, ANCHOR_CFG } from './anclar-viento.mjs'; // parche a (email El Zapillo): ancla de observacion
 const __ANCHOR_ON=process.env.WIND_ANCHOR==='1'; let __ANCHOR_BIAS=null;
@@ -132,6 +133,7 @@ const JUNTA_URL_PUB   = 'https://www.andalucia.org/';
 // Mapeo COMPLETO 40/40: generado el 3 jul y depurado/completado A MANO por el propietario el mismo día.
 // Nota: Mojácar Playa usa "Playa Descargador" como tramo representativo (no hay entrada única de Mojácar en el servicio).
 const JUNTA_MAP={
+  '55':16557, '53':28727, '54':16303, '56':16523, '57':16452, '58':16447, '59':28726, '60':16384, // v91.391: identidad y coordenadas contrastadas con BOJA y API.
   '10':16540, // Playa del Zapillo (id confirmado a mano 3 jul)
   '18':16465, // Los Genoveses (a mano 3 jul)
   '19':16247, // Playa del Mónsul (a mano 3 jul)
@@ -174,7 +176,7 @@ const JUNTA_MAP={
   '36':33955, // Playa Pósito Garrucha (153m)
   '37':16591, // El Playazo (1458m)
   '38':16512, // Playazo de Villaricos (FIX 21jul: 30489 era 'Cala Verde')
-  '41':16245, // Cala de la Tía Antonia (902m)
+
   '44':16451, // Las Salinas de Cabo de Gata (mapa 21jul)
   '45':16340, // Playa del Palmer (mapa 21jul)
   '47':16243, // Cala de la Media Luna (mapa 21jul)
@@ -290,7 +292,7 @@ async function fetchJuntaOficial(){
           const checkedAt=new Date().toISOString();
           if(rec.oflag){
             /* v91.381: la consulta no demuestra la vigencia de la fuente */
-            rec.oflagSource=JUNTA_ATTR;
+            rec.oflagSource=JUNTA_ATTR;rec.oflagSectorIds=[String(jid)];
             rec.oflagCheckedAt=checkedAt;
             rec.oflagFreshness='unknown'; // la API no publica fecha ni hora propias
           }
@@ -395,7 +397,7 @@ const ROQUETAS_ATTR = 'Ayuntamiento de Roquetas de Mar';
 const ROQUETAS_TIMEOUT_MS = Math.max(1000, Number(process.env.ROQUETAS_TIMEOUT_MS || 6000));
 // nuestro_id <- [slugs de tooltip en la web de Roquetas] (muchos-a-uno, PEOR bandera).
 // #8 combina Playa Serena + Urbanización Roquetas. bajadilla/bajos/cerrillos/salinas no tienen ficha nuestra.
-const ROQUETAS_MAP = { '6':['aguadulce'], '7':['romanilla'], '8':['playa_serena','urbanizacion_roquetas'] }; // Ventilla no tiene ficha; #11 es Nueva Almería.
+const ROQUETAS_MAP = { '6':['aguadulce'], '7':['romanilla'], '8':['playa_serena','urbanizacion_roquetas'], '57':['salinas'], '60':['bajadilla'] }; // Ventilla no tiene ficha; #11 es Nueva Almería.
 function madridDayISO(value){const d=value instanceof Date?value:new Date(value);if(Number.isNaN(d.getTime()))return null;const p={};for(const x of new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Madrid',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(d))p[x.type]=x.value;return p.year+'-'+p.month+'-'+p.day;}
 function roquetasSourceDay(){return null;} // v91.386: la fecha de AEMET no acredita la revisión de banderas.
 async function fetchRoquetasOficial(){
@@ -440,30 +442,19 @@ const VERA_BEACHES = [{id:1,name:'LAS MARINAS-BOLAGA'},{id:2,name:'EL PLAYAZO'},
 function veraText(html){return String(html||'').replace(/<script\b[\s\S]*?<\/script>/gi,' ').replace(/<style\b[\s\S]*?<\/style>/gi,' ').replace(/<[^>]+>/g,' ').replace(/&(?:nbsp|#160);/gi,' ').replace(/&aacute;/gi,'a').replace(/&eacute;/gi,'e').replace(/&iacute;/gi,'i').replace(/&oacute;/gi,'o').replace(/&uacute;/gi,'u').replace(/&ntilde;/gi,'n').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim().toUpperCase();}
 function veraFlag(html,heading){const text=veraText(html),headingAt=text.indexOf(veraText(heading)),matches=[...text.matchAll(/\bBANDERA\s+(VERDE|AMARILLA|ROJA|NEGRA)\b/g)];if(headingAt<0||!matches.length||headingAt>matches[0].index)return null;const unique=[...new Set(matches.map(m=>m[1].toLowerCase()))];return unique.length===1?unique[0]:null;}
 async function fetchVeraOficial(){
-  const meta={enabled:VERA_OFICIAL,source:VERA_ATTR,requested:1,count:0,count_flags:0,count_flags_verified:0,source_pages:VERA_BEACHES.length,elapsed_ms:0,errors:[]};
-  if(!VERA_OFICIAL){console.log('· Datos oficiales Vera: DESACTIVADOS (VERA_OFICIAL=false)');return {data:{},meta};}
-  const t0=Date.now(),out={},flags=[];
-  try{
-    for(const beach of VERA_BEACHES){
-      const ctrl=new AbortController(),to=setTimeout(()=>ctrl.abort(),VERA_TIMEOUT_MS);let html;
-      try{html=await fetch(VERA_BASE_URL+encodeURIComponent(beach.id),{headers:{'User-Agent':JUNTA_UA,'Accept':'text/html'},signal:ctrl.signal}).then(r=>{if(!r.ok)throw new Error('HTTP '+r.status+' en '+beach.name);return r.text();});}
-      finally{clearTimeout(to);}
-      const flag=veraFlag(html,beach.name);if(!flag||!EJIDO_SEV[flag])throw new Error('contenido no validado en '+beach.name);
-      flags.push(flag);
-    }
-    if(flags.length!==VERA_BEACHES.length)throw new Error('lectura incompleta de playas de Vera');
-    const flag=flags.reduce((worst,value)=>worst?ejidoWorse(worst,value):value,null);
-    const checkedAt=new Date().toISOString();out['37']={oflag:flag,oflagSource:VERA_ATTR,oflagCheckedAt:checkedAt,oflagFreshness:'unknown',oflagMunicipality:'Vera',oflagSectorIds:VERA_BEACHES.map(beach=>beach.id)};meta.count=1;meta.count_flags=1;meta.count_flags_verified=0;
-  }catch(e){meta.errors.push(String(e&&e.message||e).slice(0,160));console.log('! Vera oficial: '+meta.errors[0]);}
-  meta.elapsed_ms=Date.now()-t0;
-  console.log('· Datos oficiales Vera: '+meta.count_flags+'/'+meta.requested+' colores publicados · '+meta.count_flags_verified+' vigencias acreditadas ('+VERA_BEACHES.length+' fuentes exigidas) en '+meta.elapsed_ms+' ms');
-  return {data:out,meta};
+  const meta={enabled:VERA_OFICIAL,source:VERA_ATTR,requested:2,count:0,count_flags:0,count_flags_verified:0,source_pages:VERA_BEACHES.length,errors:[]};
+  if(!VERA_OFICIAL)return {data:{},meta}; // VERA_OFICIAL=false
+  const flags={};
+  for(const beach of VERA_BEACHES){try{const r=await fetch(VERA_BASE_URL+beach.id,{headers:{'User-Agent':JUNTA_UA},signal:AbortSignal.timeout(VERA_TIMEOUT_MS)});if(!r.ok)throw Error('HTTP '+r.status);flags[beach.id]=veraFlag(await r.text(),beach.name);}catch(e){meta.errors.push(beach.id+': '+String(e.message).slice(0,120));}}
+  const data=veraGroups391(flags,new Date().toISOString());meta.count=meta.count_flags=Object.keys(data).length;return {data,meta};
 }
 const __VERA_RES__=await fetchVeraOficial();
 const __VERA__=__VERA_RES__.data;
 __MUNI_OFI__.push(__VERA__);
 
 
+const __ALTAS_MUNI__=await collectNewMunicipalFlags();
+__MUNI_OFI__.push(__ALTAS_MUNI__.data);
 // ===== fin datos oficiales Junta =====
 
 // Equivalente servidor de fetchScenariosAt(lat,lng): devuelve {days, hourly}
@@ -1189,9 +1180,9 @@ async function main(){
   await mapLimit(catalog,CONCURRENCY,async b=>{
     const [sc,aq]=await Promise.all([scenariosAt(b.lat,b.lng),airAt(b.lat,b.lng)]);
     {const _id=String(b.id);beaches[b.id]=mergeOfficialFlag(sc,__OFI__[_id],__MUNI_OFI__.map(src=>src[_id]),b);} // v91.386: identidad y vigencia antes de prioridad municipal.
-    { const __bo=beaches[b.id]; // v91.382: el valor anterior nunca se presenta como modelo recién actualizado
+    { const __bo=beaches[b.id];if(__bo&&b.forecastReference)__bo.forecastReference={...b.forecastReference}; // v91.382: el valor anterior nunca se presenta como modelo recién actualizado
       if(__bo&&Array.isArray(__bo.days)&&__bo.days.some(x=>x&&x.agua==null)){
-        const __prev=prevBeaches[b.id]||{},__pd=Array.isArray(__prev.days)?__prev.days:null;
+        const __candidate=prevBeaches[b.id]||{},__sameReference=!b.forecastReference||(JSON.stringify(__candidate.forecastReference)===JSON.stringify(b.forecastReference)),__prev=__sameReference?__candidate:{},__pd=Array.isArray(__prev.days)?__prev.days:null;
         const __last=__pd?((__pd.find(x=>x&&x.agua!=null)||{}).agua):null;let __carried=false;
         __bo.days.forEach((day,di)=>{ if(day&&day.agua==null){ const pa=(__pd&&__pd[di]&&__pd[di].agua!=null)?__pd[di].agua:__last; if(pa!=null){day.agua=pa;__carried=true;} } });
         if(__carried){const pw=__prev.water||{};__bo.water={kind:'model',source:pw.source||'Météo-France SST via Open-Meteo Marine',status:'carried',current:__bo.days[0]&&__bo.days[0].agua!=null?__bo.days[0].agua:(pw.current??null),time:pw.time||null,grid_lat:pw.grid_lat??null,grid_lng:pw.grid_lng??null,resolution_km:8,native_hours:6,update_hours:24,change_72h:null,change_7d:null,rapid:false,recent:false};}
@@ -1220,7 +1211,7 @@ async function main(){
     aemet_alerts,
     official:__OFI_META__, // compatibilidad: metadatos principales de la Junta
     official_flag_summary:flagMetrics(beaches), // Cuenta fichas finales, sin duplicar fuentes.
-    official_sources:{junta:__OFI_META__,el_ejido:__EJIDO_RES__.meta,roquetas:__ROQUETAS_RES__.meta,vera:__VERA_RES__.meta},
+    official_sources:{junta:__OFI_META__,el_ejido:__EJIDO_RES__.meta,roquetas:__ROQUETAS_RES__.meta,vera:__VERA_RES__.meta,carboneras_cuevas:__ALTAS_MUNI__.meta},
     beaches,
     air
   };

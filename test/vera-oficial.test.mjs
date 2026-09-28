@@ -16,10 +16,4 @@ test('v91.379 datos: valida identidad y rechaza estados ausentes o ambiguos',()=
   assert.equal(veraFlag('<h2>EL PLAYAZO</h2><p>AFORO LIBRE</p>','EL PLAYAZO'),null);
   assert.equal(veraFlag('<h2>EL PLAYAZO</h2><b>BANDERA VERDE</b><b>BANDERA ROJA</b>','EL PLAYAZO'),null);
 });
-test('v91.379 datos: exige los cuatro sectores, usa la peor bandera y dispone de kill-switch',()=>{
-  assert.match(src,/const VERA_BEACHES = \[{id:1,name:'LAS MARINAS-BOLAGA'},\{id:2,name:'EL PLAYAZO'},\{id:3,name:'PUERTO REY'},\{id:4,name:'CALA MARQUES'}\]/);
-  assert.match(src,/flags\.length!==VERA_BEACHES\.length/);
-  assert.match(src,/flags\.reduce\(\(worst,value\)=>worst\?ejidoWorse\(worst,value\):value,null\)/);
-  assert.match(src,/VERA_OFICIAL=false/);
-  assert.match(src,/out\['37'\]=\{oflag:flag,oflagSource:VERA_ATTR/);
-});
+test('v91.391 Vera se divide con identidad propia y kill-switch',()=>{assert.ok(src.includes('veraGroups391(flags'));assert.ok(src.includes('VERA_OFICIAL=false'));});

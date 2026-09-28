@@ -36,6 +36,7 @@ export function completeWorstFlag(flags) {
 function normalized(value) { return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase(); }
 export function flagMatchesBeach(record, beach) {
   if (!record?.oflag) return false;
+  if(beach.flag_scope){const ids=Array.isArray(record.oflagSectorIds)?record.oflagSectorIds.map(String):[];if(!(beach.flag_scope.rules||[]).some(r=>r.complete&&r.source===record.oflagSource&&ids.length===r.ids.length&&new Set(ids).size===ids.length&&r.ids.every(id=>ids.includes(String(id)))))return false;}
   // Municipal records must identify their municipality; fail closed on missing identity.
   if (String(record.oflagSource || '').startsWith('Ayuntamiento de ')) {
     return !!record.oflagMunicipality && normalized(record.oflagMunicipality) === normalized(beach.municipio);
@@ -45,6 +46,12 @@ export function flagMatchesBeach(record, beach) {
 export function mergeOfficialFlag(scenario, junta, municipalCandidates, beach, now = Date.now()) {
   const merged = { ...scenario, ...(junta || {}) };
   for (const field of FLAG_FIELDS) delete merged[field];
+  if(beach.flag_scope)merged.oflagSections=[...municipalCandidates,junta].filter(Boolean).flatMap(record=>{
+    const ids=Array.isArray(record.oflagSectorIds)?record.oflagSectorIds.map(String):[];
+    if(!severity[record.oflag]||(record.oflagMunicipality&&normalized(record.oflagMunicipality)!==normalized(beach.municipio)))return [];
+    const rule=beach.flag_scope.rules.find(r=>r.source===record.oflagSource&&ids.length===r.ids.length&&new Set(ids).size===ids.length&&r.ids.every(id=>ids.includes(String(id))));
+    if(!rule)return [];const section={scope:rule.label,whole:rule.complete};for(const key of FLAG_FIELDS)if(Object.hasOwn(record,key))section[key]=record[key];return [section];
+  });
   const candidates = [...municipalCandidates, junta].filter(record => flagMatchesBeach(record, beach));
   const selected = candidates.find(record => flagIsCurrent(record, now)) || candidates[0];
   if (selected) for (const field of FLAG_FIELDS) if (Object.hasOwn(selected, field)) merged[field] = selected[field];
