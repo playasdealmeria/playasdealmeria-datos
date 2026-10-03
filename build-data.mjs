@@ -685,7 +685,9 @@ function sanitizeAemetRecord(record, opts={}){
   const a=record&&typeof record==='object'?JSON.parse(JSON.stringify(record)):{};
   a.source=a.source||'AEMET Meteoalerta';
   a.fetched_at=a.fetched_at||new Date().toISOString();
-  a.items=Array.isArray(a.items)?a.items:[];
+  const original=Array.isArray(a.items)?a.items:[];
+  a.items=original.filter(item=>aemetRecordUsable756(item,a));
+  if(a.items.length!==original.length){a.ok=false;a.warnings=[...(Array.isArray(a.warnings)?a.warnings:[]),'Se descarta texto no verificable como aviso local de AEMET.'];}
   a.errors=(Array.isArray(a.errors)?a.errors:[]).map(sanitizeErrorMessage).slice(0,8);
   a.warnings=(Array.isArray(a.warnings)?a.warnings:[]).map(sanitizeErrorMessage).slice(0,12);
   if(a.method!=='opendata_cap' || a.html_fallback_used || a.errors.length){
@@ -724,10 +726,32 @@ function stripHTML(x){return String(x||'').replace(/<script[\s\S]*?<\/script>/gi
 function norm(s){return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();}
 function htmlDecode(x){return stripHTML(String(x||'').replace(/<!\[CDATA\[|\]\]>/g,''));}
 function xmlDecode(x){return htmlDecode(String(x||'').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&apos;/g,"'"));}
+/* v91.756: navigation text is not an official local warning. */
+function aemetRecordUsable756(a,health={}){
+  if(!a||typeof a!=='object')return false;
+  const text=['phenomenon','fenomeno','title','titulo','zone','zona','comment','comentario','text','descripcion','period','periodo','value','valor'].map(k=>String(a[k]||'')).join(' ');
+  if(/\uFFFD|subir a la cabecera|enlaces relacionados|detalle de avisos|avisos\s+avisos|meteoalarm:\s*servicio/i.test(text))return false;
+  const method=String(a.source_method||'');
+  if(/^html_text|html_unparsed/.test(method))return false;
+  if(method==='opendata_cap')return true;
+  if(/^html/.test(method)||health.html_fallback_used||health.method==='html_fallback'){
+    const color=String(a.color||a.color_aviso||a.nivel||'').trim();
+    const period=String(a.period||a.periodo||'');
+    return /^(amarillo|naranja|rojo)$/i.test(color)&&(period.match(/\b(?:[01]?\d|2[0-3]):[0-5]\d\b/g)||[]).length>=2;
+  }
+  return true;
+}
+
+function decodeAemetText756(bytes,contentType=''){
+  const head=Buffer.from(bytes).subarray(0,4096).toString('latin1');
+  const declared=(String(contentType).match(/charset\s*=\s*["']?([\w-]+)/i)||head.match(/<meta\b[^>]*charset\s*=\s*["']?([\w-]+)/i)||[])[1]||'utf-8';
+  try{return new TextDecoder(declared).decode(bytes);}catch(e){return new TextDecoder('utf-8').decode(bytes);}
+}
+
 async function getText(url){
   const r=await fetch(url,{headers:{'user-agent':'playasdealmeria.es datos/1.0','accept':'text/html,application/rss+xml,application/xml,text/xml;q=0.9,*/*;q=0.8'}});
   if(!r.ok)throw new Error('HTTP '+r.status+' '+sanitizeURLForLog(url));
-  return await r.text();
+  return decodeAemetText756(await r.arrayBuffer(),r.headers.get('content-type')||'');
 }
 /* ===== datos v91.9 · AEMET OpenData por node:https con TLS<=1.2 =====
    Sintoma: "OpenData: fetch failed" cronico tras migrar el repo a Node 24.
@@ -876,45 +900,22 @@ function parseAemetHTML(html,url){
   const fallbackZone=aemetZoneFromURL(url);
   const fullText=stripHTML(html);
   const rows=[...String(html||'').matchAll(/<tr[\s\S]*?<\/tr>/gi)].map(m=>m[0]);
-  const noWarning=aemetLikelyNoWarnings(fullText);
-  if(noWarning)return {items, method:'html_no_warning_text', rows:rows.length, fallback_used:false, warnings};
   for(const row of rows){
     const cells=[...row.matchAll(/<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi)].map(m=>stripHTML(m[1])).filter(Boolean);
     if(cells.length<2)continue;
-    const txt=cells.join(' · ');
-    const a=makeAemetAlert(txt,day,url,fallbackZone);
-    if(a)items.push(a);
+    const txt=cells.join(' · '),a=makeAemetAlert(txt,day,url,fallbackZone);
+    if(!a)continue;
+    const clocks=txt.match(/\b(?:[01]?\d|2[0-3]):[0-5]\d\b/g)||[];
+    a.period=clocks.length>=2?clocks[0]+'–'+clocks[1]:'';
+    a.source_method='html_table';
+    if(aemetRecordUsable756(a,{html_fallback_used:true}))items.push(a);
   }
-  if(items.length)return {items, method:'html_table', rows:rows.length, fallback_used:false, warnings};
-  const text=fullText;
-  const ntext=norm(text);
-  const scanZones=[...new Set([fallbackZone,...AEMET_ZONE_NAMES].filter(Boolean))];
-  for(const z of scanZones){
-    const nz=norm(z);let pos=ntext.indexOf(nz);
-    while(pos>=0){
-      const frag=text.slice(Math.max(0,pos-220),Math.min(text.length,pos+520));
-      const a=makeAemetAlert(frag,day,url,z);
-      if(a)items.push(a);
-      pos=ntext.indexOf(nz,pos+nz.length);
-    }
-  }
-  if(items.length)return {items, method:'html_text_fallback_zone', rows:rows.length, fallback_used:true, warnings};
-  if(fallbackZone){
-    for(const p of AEMET_PHENOMENA){
-      const np=norm(p);let pos=ntext.indexOf(np);
-      while(pos>=0){
-        const frag=text.slice(Math.max(0,pos-80),Math.min(text.length,pos+520));
-        const a=makeAemetAlert(frag,day,url,fallbackZone);
-        if(a)items.push(a);
-        pos=ntext.indexOf(np,pos+np.length);
-      }
-    }
-  }
-  if(items.length)return {items, method:'html_text_fallback_phenomenon', rows:rows.length, fallback_used:true, warnings};
-  if(!rows.length)warnings.push('AEMET HTML sin tabla <tr>; posible cambio de diseño.');
-  else warnings.push(`AEMET HTML con ${rows.length} filas, pero sin avisos parseables ni texto claro de sin avisos.`);
-  return {items, method:'html_unparsed', rows:rows.length, fallback_used:true, warnings};
+  if(items.length)return {items,method:'html_table',rows:rows.length,fallback_used:false,warnings};
+  if(aemetLikelyNoWarnings(fullText))return {items,method:'html_no_warning_text',rows:rows.length,fallback_used:false,warnings};
+  warnings.push('AEMET HTML sin avisos locales verificables; no se deducen avisos del texto general de la página.');
+  return {items,method:'html_unparsed',rows:rows.length,fallback_used:true,warnings};
 }
+
 function xmlBlocks(xml,tag){const re=new RegExp(`<(?:\\w+:)?${tag}\\b[^>]*>[\\s\\S]*?<\\/(?:\\w+:)?${tag}>`,'gi');return [...String(xml||'').matchAll(re)].map(m=>m[0]);}
 function xmlTag(xml,tag){const re=new RegExp(`<(?:\\w+:)?${tag}\\b[^>]*>([\\s\\S]*?)<\\/(?:\\w+:)?${tag}>`,'i');const m=String(xml||'').match(re);return m?xmlDecode(m[1]).trim():'';}
 function parameterValue(info,needle){
