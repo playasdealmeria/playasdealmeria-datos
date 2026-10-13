@@ -133,6 +133,7 @@ const JUNTA_URL_PUB   = 'https://www.andalucia.org/';
 // Mapeo COMPLETO 40/40: generado el 3 jul y depurado/completado A MANO por el propietario el mismo día.
 // Nota: Mojácar Playa usa "Playa Descargador" como tramo representativo (no hay entrada única de Mojácar en el servicio).
 const JUNTA_MAP={
+  '61':16251, // Cala del Cuervo, BOJA 115; bandera sin fecha no se trata como actual.
   '55':16557, '53':28727, '54':16303, '56':16523, '57':16452, '58':16447, '59':28726, '60':16384, // v91.391: identidad y coordenadas contrastadas con BOJA y API.
   '10':16540, // Playa del Zapillo (id confirmado a mano 3 jul)
   '18':16465, // Los Genoveses (a mano 3 jul)

@@ -1,0 +1,5 @@
+import test from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs';
+import {flagIsCurrent} from '../flag-integrity.mjs';
+const cat=JSON.parse(fs.readFileSync(new URL('../playas_catalogo.json',import.meta.url))),src=fs.readFileSync(new URL('../build-data.mjs',import.meta.url),'utf8');
+test('Cuervo tiene una identidad y referencia independientes en el recolector',()=>{assert.equal(cat.length,58);const b=cat.find(x=>x.id===61);assert.equal(b.nombre,'Cala del Cuervo');assert.equal(b.forecastReference.version,'cuervo-boja115-v1');assert.equal(b.forecastReference.lat,b.lat);assert.equal(b.forecastReference.lng,b.lng);assert.equal(b.requireLocalForecast,true);assert.match(src,/'61':16251/);assert.deepEqual(b.flag_scope.rules[0].ids,['16251']);assert.equal(b.medusas,null);assert.equal(b.calidad,null);});
+test('amarilla turística sin fecha no se convierte en bandera actual al descargarla',()=>{assert.equal(flagIsCurrent({oflag:'amarilla',oflagSource:'Junta de Andalucía · andalucia.org',oflagFetchedAt:new Date().toISOString(),oflagFreshness:'unknown'}),false);});
