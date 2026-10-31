@@ -108,7 +108,7 @@ function summarizePart(dateStr,startHour,endHour,wh,mh){
   const waveDir=meanDir(times.map(t=>marineByTime[t]?.waveDir));
   const wavePeriod=avg(times.map(t=>marineByTime[t]?.wavePeriod)),waveModels=aggregateWaveModels(times.map(t=>marineByTime[t]));
   const temp=avg(idxs.map(i=>wh.temperature_2m?.[i]));
-  return {ico:e.ico,estadoTxt:e.estadoTxt,temp:temp!=null?Math.round(temp):null,windK:spd!=null?Math.round(spd):null,gustK:gust!=null?Math.round(gust):(spd!=null?Math.round(spd*1.3):null),windDir:dir!=null?Math.round(dir):null,waveH:waveH!=null?Math.round(waveH*10)/10:null,waveDir:waveDir!=null?Math.round(waveDir):null,wavePeriod:wavePeriod!=null?Math.round(wavePeriod*10)/10:null,waveModels};
+  return {ico:e.ico,estadoTxt:e.estadoTxt,temp:temp!=null?Math.round(temp):null,windK:spd!=null?Math.round(spd):null,gustK:gust!=null?Math.round(gust):null,windDir:dir!=null?Math.round(dir):null,waveH:waveH!=null?Math.round(waveH*10)/10:null,waveDir:waveDir!=null?Math.round(waveDir):null,wavePeriod:wavePeriod!=null?Math.round(wavePeriod*10)/10:null,waveModels};
 }
 
 async function getJSON(url){
@@ -460,9 +460,11 @@ __MUNI_OFI__.push(__ALTAS_MUNI__.data);
 // ===== fin datos oficiales Junta =====
 
 // Equivalente servidor de fetchScenariosAt(lat,lng): devuelve {days, hourly}
+function validGust403(value){return typeof value==='number'&&Number.isFinite(value)&&value>=0?Math.round(value):null;}
+function windSource403(wx,lat,lng,capturedAt){const number=v=>typeof v==='number'&&Number.isFinite(v)?v:null;return {schema:1,kind:'forecast_not_observation',provider:'Open-Meteo',model_selection:'best_match',model_issue_time:null,captured_at:capturedAt,requested_lat:lat,requested_lng:lng,grid_lat:number(wx.latitude),grid_lng:number(wx.longitude),grid_elevation_m:number(wx.elevation),timezone:typeof wx.timezone==='string'?wx.timezone:null,utc_offset_seconds:number(wx.utc_offset_seconds),wind_unit:typeof wx.hourly_units?.wind_speed_10m==='string'?wx.hourly_units.wind_speed_10m:null,gust_unit:typeof wx.hourly_units?.wind_gusts_10m==='string'?wx.hourly_units.wind_gusts_10m:null,gust_time_basis:'preceding-hour-maximum'};}
 async function scenariosAt(lat,lng){
   const u=`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m&hourly=temperature_2m,relative_humidity_2m,precipitation,precipitation_probability,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m&daily=weather_code,temperature_2m_max,temperature_2m_min,wind_speed_10m_max,wind_gusts_10m_max,wind_direction_10m_dominant,uv_index_max,sunrise,sunset&timezone=auto&forecast_days=${FORECAST_DAYS}&wind_speed_unit=kmh`;
-  const wx=await getJSON(u);
+  const wx=await getJSON(u),windSource=windSource403(wx,lat,lng,new Date().toISOString());
   let sst=null,marD=null,marH=null,water=null; // v91.382: modelo actual, tendencia y vigencia separadas
   try{
     const mar=normalizeMarineResponse(await getJSON(`https://marine-api.open-meteo.com/v1/marine?latitude=${lat}&longitude=${lng}&current=sea_surface_temperature&hourly=wave_height,wave_direction,wave_period,sea_surface_temperature&daily=wave_height_max,wave_direction_dominant&models=${MARINE_MODELS}&timezone=auto&past_days=7&forecast_days=${FORECAST_DAYS}&cell_selection=sea`));
@@ -535,7 +537,7 @@ async function scenariosAt(lat,lng){
       windDir:dir!=null&&Number.isFinite(Number(dir))?Math.round(Number(dir)):null,
       viento:windType(dir,spd),
       fuerza:(typeof spd==='number'&&Number.isFinite(spd)&&spd>=0?Math.round(spd):null),
-      rachas:(typeof (d.wind_gusts_10m_max?.[i]??(i===0?cur.wind_gusts_10m:(typeof spd==='number'&&Number.isFinite(spd)?spd*1.3:null))??(typeof spd==='number'&&Number.isFinite(spd)?spd*1.3:null))==='number'&&Number.isFinite((d.wind_gusts_10m_max?.[i]??(i===0?cur.wind_gusts_10m:(typeof spd==='number'&&Number.isFinite(spd)?spd*1.3:null))??(typeof spd==='number'&&Number.isFinite(spd)?spd*1.3:null)))&&(d.wind_gusts_10m_max?.[i]??(i===0?cur.wind_gusts_10m:(typeof spd==='number'&&Number.isFinite(spd)?spd*1.3:null))??(typeof spd==='number'&&Number.isFinite(spd)?spd*1.3:null))>=0?Math.round((d.wind_gusts_10m_max?.[i]??(i===0?cur.wind_gusts_10m:(typeof spd==='number'&&Number.isFinite(spd)?spd*1.3:null))??(typeof spd==='number'&&Number.isFinite(spd)?spd*1.3:null))):null),
+      rachas:validGust403(d.wind_gusts_10m_max?.[i]),
       sale:d.sunrise?.[i]?String(d.sunrise[i]).slice(11,16):'06:50', // datos v91.14-B: el literal viejo daba '' (slice fuera de rango)
       pone:d.sunset?.[i]?String(d.sunset[i]).slice(11,16):'21:30', // datos v91.14-B
       uv:d.uv_index_max?.[i]!=null?Math.round(d.uv_index_max[i]):null, // datos v91.14-B: guardaba el array, no el elemento (Math.round(null)=0)
@@ -566,7 +568,7 @@ async function scenariosAt(lat,lng){
     hourly.waveDir.push(marineByTime[t]?.waveDir!=null?Math.round(marineByTime[t].waveDir):null); // datos v91.14-B: sin fabricar 180
   });
   if(__ANCHOR_ON&&__ANCHOR_BIAS){ try{ applyWindAnchor(hourly,__ANCHOR_BIAS,__ANCHOR_BIAS.nowHour,ANCHOR_CFG); }catch(e){} }
-  return {days:out,hourly,water};
+  return {days:out,hourly,water,windSource};
 }
 
 async function airAt(lat,lng){

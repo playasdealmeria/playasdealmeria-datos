@@ -12,5 +12,5 @@ test('código ausente no fabrica descripción de cielo',()=>{
  assert.ok(!source.includes('codeEstado(code==null?0:code)'));
 });
 test('resumen diario sin viento conserva fuerza y rachas ausentes',()=>{
- for(const field of ['fuerza','rachas']){const line=source.split(/\r?\n/).find(x=>x.startsWith('      '+field+':'));const run=new Function('spd','const d={},cur={},i=1;return ({'+line+'}).'+field+';');assert.equal(run(null),null);assert.equal(run(0),0);}
+ for(const field of ['fuerza','rachas']){const line=source.split(/\r?\n/).find(x=>x.startsWith('      '+field+':'));const helper=source.split(/\r?\n/).find(x=>x.startsWith('function validGust403('));const run=new Function('spd',helper+';const d={wind_gusts_10m_max:[null,spd]},cur={},i=1;return ({'+line+'}).'+field+';');assert.equal(run(null),null);assert.equal(run(0),0);}
 });
