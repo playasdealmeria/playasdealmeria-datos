@@ -33,7 +33,7 @@ jobs:
       - name: Configurar Node
         uses: actions/setup-node@v5
         with:
-          node-version: '>=24.22.1 <25'
+          node-version: '>=24.22.3 <25'
           check-latest: true
 
       - name: Validar secret AEMET
