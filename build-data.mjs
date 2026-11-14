@@ -111,10 +111,29 @@ function summarizePart(dateStr,startHour,endHour,wh,mh){
   return {ico:e.ico,estadoTxt:e.estadoTxt,temp:temp!=null?Math.round(temp):null,windK:spd!=null?Math.round(spd):null,gustK:gust!=null?Math.round(gust):null,windDir:dir!=null?Math.round(dir):null,waveH:waveH!=null?Math.round(waveH*10)/10:null,waveDir:waveDir!=null?Math.round(waveDir):null,wavePeriod:wavePeriod!=null?Math.round(wavePeriod*10)/10:null,waveModels};
 }
 
+let forecastRetriesRemaining=3;
 async function getJSON(url){
-  const r=await fetch(url,{headers:{'user-agent':'playasdealmeria.es datos/1.0'}});
-  if(!r.ok)throw new Error('HTTP '+r.status+' '+sanitizeURLForLog(url));
-  return r.json();
+  const forecast=new URL(url).hostname==='api.open-meteo.com';
+  for(let attempt=0;attempt<(forecast?2:1);attempt++){
+    let response;
+    try{response=await fetch(url,{headers:{'user-agent':'playasdealmeria.es datos/1.0'}});}
+    catch(error){
+      const code=String(error.cause?.code||error.name||'network').replace(/[^a-zA-Z0-9_-]/g,'').slice(0,48);
+      if(!forecast||attempt>0||!['ECONNRESET','ETIMEDOUT','UND_ERR_CONNECT_TIMEOUT','UND_ERR_SOCKET'].includes(code)||forecastRetriesRemaining<=0)throw new Error('Fallo de red '+new URL(url).hostname+' '+code);
+      forecastRetriesRemaining--;
+      console.warn('Previsión no disponible, reintento de red ('+code+')');
+      await new Promise(resolve=>setTimeout(resolve,1000));
+      continue;
+    }
+    if(response.ok)return response.json();
+    if(forecast&&attempt===0&&response.status>=500&&forecastRetriesRemaining>0){
+      forecastRetriesRemaining--;
+      console.warn('Previsión HTTP '+response.status+', un reintento');
+      await new Promise(resolve=>setTimeout(resolve,1000));
+      continue;
+    }
+    throw new Error('HTTP '+response.status+' '+sanitizeURLForLog(url));
+  }
 }
 
 // ===== v91.9 datos: banderas y ocupación OFICIALES (Junta de Andalucía) — ACTIVO desde 9 jul 2026 =====
